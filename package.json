@@ -1,0 +1,35 @@
+{
+  "name": "art-society",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A 3D online board game about painting, patrons and prestige. Play with friends across PCs.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c yellow,cyan \"tsx watch src/server/index.ts\" \"vite\"",
+    "build": "vite build",
+    "serve": "tsx src/server/index.ts",
+    "start": "vite build && tsx src/server/index.ts",
+    "test": "vitest run",
+    "sim": "tsx scripts/simulate.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource/cormorant-garamond": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
+    "three": "^0.187.0",
+    "ws": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "@types/three": "^0.187.0",
+    "@types/ws": "^8.18.2",
+    "concurrently": "^10.0.7",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.2"
+  }
+}

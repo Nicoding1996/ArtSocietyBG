@@ -1,0 +1,483 @@
+import { randomBytes, randomInt } from 'node:crypto';
+import type { WebSocket } from 'ws';
+import { applyAction, createGame, viewFor, waitingOn } from '../shared/engine';
+import { botDecide } from '../shared/bot';
+import { BOT_NAMES, PLAYER_COLORS, RULES } from '../shared/content';
+import { eventsAnimationMs } from '../shared/timing';
+import {
+  HATS,
+  type Action,
+  type ClientMessage,
+  type GameEvent,
+  type GameState,
+  type HatId,
+  type LobbyPlayer,
+  type RoomView,
+  type ServerMessage,
+} from '../shared/types';
+
+const FAST = process.env.ART_SOCIETY_FAST === '1';
+/** How long a disconnected player's seat waits before the autopilot plays for them. */
+const AFK_GRACE_MS = FAST ? 3000 : 20_000;
+/** How long a disconnected lobby player keeps their seat (covers page reloads). */
+const LOBBY_GRACE_MS = 20_000;
+/** A connected player who sits on a decision this long gets the autopilot until they act again. */
+const IDLE_MS = FAST ? 15_000 : 120_000;
+const ROOM_IDLE_MS = 30 * 60_000;
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+const REACTIONS = ['👏', '😮', '😂', '🎨', '🔥', '😭', '👑', '🤝'];
+
+export interface Conn {
+  ws: WebSocket;
+  token: string | null;
+  room: Room | null;
+  pid: string | null;
+  recent: number[];
+}
+
+interface Seat extends LobbyPlayer {
+  token: string | null;
+  conn: Conn | null;
+  disconnectedAt: number;
+  left: boolean;
+  idle: boolean;
+}
+
+function send(conn: Conn | null, msg: ServerMessage) {
+  if (conn && conn.ws.readyState === conn.ws.OPEN) conn.ws.send(JSON.stringify(msg));
+}
+
+export function cleanName(raw: unknown): string {
+  const s = typeof raw === 'string' ? raw : '';
+  const name = s.replace(/[\u0000-\u001f\u007f-\u009f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 18);
+  return name || 'Collector';
+}
+
+const newId = () => 'p_' + randomBytes(5).toString('hex');
+
+export class Room {
+  readonly seats: Seat[] = [];
+  hostId = '';
+  status: 'lobby' | 'game' = 'lobby';
+  game: GameState | null = null;
+  lastActivity = Date.now();
+  private botTimer: NodeJS.Timeout | null = null;
+  private watchTimer: NodeJS.Timeout | null = null;
+  private busyUntil = 0;
+  /** When each player the game is waiting on started waiting (for the idle autopilot). */
+  private waitSince = new Map<string, number>();
+
+  constructor(
+    readonly code: string,
+    private readonly onEmpty: (room: Room) => void,
+  ) {}
+
+  // ---------- membership ----------
+
+  seatByToken(token: string): Seat | undefined {
+    return this.seats.find((s) => s.token === token);
+  }
+
+  addHuman(conn: Conn, name: string): Seat | string {
+    if (this.status !== 'lobby') return 'That game has already started.';
+    if (this.seats.length >= RULES.maxPlayers) return `That room is full (${RULES.maxPlayers} collectors at most).`;
+    const seat: Seat = {
+      id: newId(),
+      name: this.uniqueName(cleanName(name)),
+      color: this.freeColor(),
+      hat: HATS[this.seats.length % HATS.length],
+      isBot: false,
+      connected: true,
+      token: conn.token,
+      conn: null,
+      disconnectedAt: 0,
+      left: false,
+      idle: false,
+    };
+    this.seats.push(seat);
+    if (!this.hostId) this.hostId = seat.id;
+    this.attach(conn, seat);
+    return seat;
+  }
+
+  attach(conn: Conn, seat: Seat) {
+    if (seat.conn && seat.conn !== conn) {
+      send(seat.conn, { t: 'error', message: 'You joined from another tab.' });
+      seat.conn.room = null;
+      seat.conn.pid = null;
+    }
+    seat.conn = conn;
+    seat.connected = true;
+    seat.left = false;
+    conn.room = this;
+    conn.pid = seat.id;
+    this.touch();
+    if (this.game) {
+      const p = this.game.players.find((x) => x.id === seat.id);
+      if (p) p.connected = true;
+    }
+    this.broadcastRoom();
+    if (this.game) {
+      this.broadcastGame([]);
+      this.schedule();
+    }
+  }
+
+  detach(conn: Conn) {
+    const seat = this.seats.find((s) => s.conn === conn);
+    conn.room = null;
+    conn.pid = null;
+    if (!seat) return;
+    seat.conn = null;
+    seat.connected = false;
+    seat.disconnectedAt = Date.now();
+    if (this.game) {
+      const p = this.game.players.find((x) => x.id === seat.id);
+      if (p) p.connected = false;
+      this.broadcastGame([]);
+    }
+    this.broadcastRoom();
+    this.schedule();
+  }
+
+  leave(conn: Conn) {
+    const seat = this.seats.find((s) => s.conn === conn);
+    this.detach(conn);
+    if (!seat) return;
+    if (this.status === 'lobby') this.removeSeat(seat.id);
+    else seat.left = true;
+    this.fixHost();
+    this.broadcastRoom();
+    this.schedule();
+  }
+
+  private removeSeat(id: string) {
+    const i = this.seats.findIndex((s) => s.id === id);
+    if (i >= 0) this.seats.splice(i, 1);
+    this.fixHost();
+    if (!this.seats.some((s) => !s.isBot)) this.onEmpty(this);
+  }
+
+  private fixHost() {
+    const host = this.seats.find((s) => s.id === this.hostId);
+    if (host && !host.isBot && !host.left && host.conn) return;
+    const next = this.seats.find((s) => !s.isBot && !s.left && s.conn) ?? (host && !host.isBot && !host.left ? host : undefined);
+    if (next) this.hostId = next.id;
+  }
+
+  /** Periodic housekeeping: lobby seats of vanished players, host hand-over, idle rooms. */
+  tick(now: number) {
+    if (this.status === 'lobby') {
+      for (const s of [...this.seats]) {
+        if (!s.isBot && !s.conn && now - s.disconnectedAt > LOBBY_GRACE_MS) this.removeSeat(s.id);
+      }
+    }
+    const before = this.hostId;
+    this.fixHost();
+    if (before !== this.hostId) this.broadcastRoom();
+    const anyone = this.seats.some((s) => s.conn);
+    if (!anyone && now - this.lastActivity > ROOM_IDLE_MS) this.onEmpty(this);
+    if (anyone) this.lastActivity = now;
+  }
+
+  private touch() {
+    this.lastActivity = Date.now();
+  }
+
+  private uniqueName(name: string, except?: string): string {
+    let n = name;
+    let i = 2;
+    while (this.seats.some((s) => s.id !== except && s.name.toLowerCase() === n.toLowerCase())) n = `${name} ${i++}`;
+    return n;
+  }
+
+  private freeColor(): string {
+    return PLAYER_COLORS.find((c) => !this.seats.some((s) => s.color === c)) ?? PLAYER_COLORS[0];
+  }
+
+  view(): RoomView {
+    return {
+      code: this.code,
+      hostId: this.hostId,
+      status: this.status,
+      players: this.seats.map((s) => ({
+        id: s.id,
+        name: s.name,
+        color: s.color,
+        hat: s.hat,
+        isBot: s.isBot,
+        connected: s.isBot || (!!s.conn && !s.left),
+      })),
+    };
+  }
+
+  broadcastRoom() {
+    const room = this.view();
+    const serverTime = Date.now();
+    for (const s of this.seats) if (s.conn) send(s.conn, { t: 'room', room, you: s.id, serverTime });
+  }
+
+  broadcastGame(events: GameEvent[]) {
+    if (!this.game) return;
+    const serverTime = Date.now();
+    for (const s of this.seats) {
+      if (s.conn) send(s.conn, { t: 'game', view: viewFor(this.game, s.id), events, serverTime });
+    }
+  }
+
+  // ---------- messages ----------
+
+  handle(conn: Conn, msg: ClientMessage) {
+    const seat = this.seats.find((s) => s.conn === conn);
+    if (!seat) return;
+    this.touch();
+    // Any message proves the player is back at the table.
+    if (seat.idle) {
+      seat.idle = false;
+      this.waitSince.delete(seat.id);
+      this.schedule();
+    }
+    const isHost = seat.id === this.hostId;
+    const err = (message: string) => send(conn, { t: 'error', message });
+
+    switch (msg.t) {
+      case 'profile': {
+        if (this.status !== 'lobby') return err('You can only change your look in the lobby.');
+        if (msg.name !== undefined) seat.name = this.uniqueName(cleanName(msg.name), seat.id);
+        if (msg.color !== undefined) {
+          if (!PLAYER_COLORS.includes(msg.color)) return err('Unknown colour.');
+          if (this.seats.some((s) => s !== seat && s.color === msg.color)) return err('That colour is taken.');
+          seat.color = msg.color;
+        }
+        if (msg.hat !== undefined) {
+          if (!HATS.includes(msg.hat as HatId)) return err('Unknown hat.');
+          seat.hat = msg.hat;
+        }
+        this.broadcastRoom();
+        return;
+      }
+      case 'addBot': {
+        if (!isHost || this.status !== 'lobby') return err('Only the host can add bots.');
+        if (this.seats.length >= RULES.maxPlayers) return err('The table is full.');
+        const name = BOT_NAMES.find((n) => !this.seats.some((s) => s.name === n)) ?? `Bot ${this.seats.length}`;
+        this.seats.push({
+          id: newId(),
+          name,
+          color: this.freeColor(),
+          hat: HATS[randomInt(HATS.length)],
+          isBot: true,
+          connected: true,
+          token: null,
+          conn: null,
+          disconnectedAt: 0,
+          left: false,
+          idle: false,
+        });
+        this.broadcastRoom();
+        return;
+      }
+      case 'removeBot': {
+        if (!isHost || this.status !== 'lobby') return err('Only the host can remove bots.');
+        const bot = this.seats.find((s) => s.id === msg.id && s.isBot);
+        if (bot) this.removeSeat(bot.id);
+        this.broadcastRoom();
+        return;
+      }
+      case 'start': {
+        if (!isHost || this.status !== 'lobby') return err('Only the host can start the game.');
+        if (this.seats.length < RULES.minPlayers) return err(`You need at least ${RULES.minPlayers} collectors. Add a bot!`);
+        const { state, events } = createGame({
+          seed: randomInt(2 ** 31),
+          players: this.seats.map((s) => ({ id: s.id, name: s.name, color: s.color, hat: s.hat, isBot: s.isBot })),
+        });
+        this.game = state;
+        for (const p of state.players) p.connected = this.seats.find((s) => s.id === p.id)?.conn != null || p.isBot;
+        this.status = 'game';
+        this.busyUntil = Date.now();
+        this.waitSince.clear();
+        this.broadcastRoom();
+        this.afterChange(events);
+        return;
+      }
+      case 'toLobby':
+        if (!isHost) return err('Only the host can do that.');
+        if (this.game && this.game.phase.kind !== 'over') return err('The game is still running.');
+        this.endGame();
+        return;
+      case 'act':
+        return this.act(seat, msg.action);
+      case 'chat': {
+        const text = typeof msg.text === 'string' ? msg.text.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim().slice(0, 240) : '';
+        if (!text) return;
+        if (!this.rateOk(conn, 6, 6000)) return err('Slow down a little!');
+        for (const s of this.seats) send(s.conn, { t: 'chat', pid: seat.id, name: seat.name, color: seat.color, text });
+        return;
+      }
+      case 'back':
+        return;
+      case 'react':
+        if (!REACTIONS.includes(msg.emoji)) return;
+        if (!this.rateOk(conn, 8, 4000)) return;
+        for (const s of this.seats) send(s.conn, { t: 'react', pid: seat.id, emoji: msg.emoji });
+        return;
+    }
+  }
+
+  private rateOk(conn: Conn, max: number, windowMs: number): boolean {
+    const now = Date.now();
+    conn.recent = conn.recent.filter((t) => now - t < windowMs);
+    if (conn.recent.length >= max) return false;
+    conn.recent.push(now);
+    return true;
+  }
+
+  private endGame() {
+    this.clearTimers();
+    this.game = null;
+    this.status = 'lobby';
+    this.waitSince.clear();
+    for (const s of [...this.seats]) if (s.left || (!s.isBot && !s.conn)) this.removeSeat(s.id);
+    this.broadcastRoom();
+  }
+
+  private act(seat: Seat, action: Action) {
+    if (!this.game) return send(seat.conn, { t: 'error', message: 'No game is running.' });
+    const res = applyAction(this.game, seat.id, action);
+    if (!res.ok) return send(seat.conn, { t: 'error', message: res.error });
+    seat.idle = false;
+    this.waitSince.delete(seat.id);
+    this.afterChange(res.events);
+  }
+
+  private afterChange(events: GameEvent[]) {
+    const now = Date.now();
+    this.busyUntil = Math.max(this.busyUntil, now) + eventsAnimationMs(events);
+    this.broadcastGame(events);
+    this.schedule();
+  }
+
+  // ---------- bots, autopilot and idle players ----------
+
+  private clearTimers() {
+    if (this.botTimer) clearTimeout(this.botTimer);
+    if (this.watchTimer) clearTimeout(this.watchTimer);
+    this.botTimer = this.watchTimer = null;
+  }
+
+  private autopilot(seat: Seat, now: number): boolean {
+    return seat.isBot || seat.left || seat.idle || (!seat.conn && now - seat.disconnectedAt >= AFK_GRACE_MS);
+  }
+
+  private schedule() {
+    this.clearTimers();
+    const g = this.game;
+    if (!g || g.phase.kind === 'over') return;
+    const now = Date.now();
+    // With nobody watching, the table pauses instead of racing to the end.
+    if (!this.seats.some((s) => s.conn && !s.isBot)) return;
+
+    const waiting = waitingOn(g);
+    for (const id of [...this.waitSince.keys()]) if (!waiting.includes(id)) this.waitSince.delete(id);
+    for (const id of waiting) if (!this.waitSince.has(id)) this.waitSince.set(id, Math.max(now, this.busyUntil));
+    const seats = waiting.map((id) => this.seats.find((s) => s.id === id)).filter((s): s is Seat => !!s);
+
+    const auto = seats.find((s) => this.autopilot(s, now));
+    if (auto) {
+      const think = FAST ? 120 : auto.isBot ? 650 + randomInt(650) : 450;
+      this.botTimer = setTimeout(() => this.runAutopilot(auto.id), Math.max(0, this.busyUntil - now) + think);
+    }
+    // Wake up when an absent player's grace runs out or a present one has been idle too long.
+    const wake: number[] = [];
+    for (const s of seats) {
+      if (this.autopilot(s, now) || s.isBot) continue;
+      if (!s.conn) wake.push(s.disconnectedAt + AFK_GRACE_MS);
+      else wake.push((this.waitSince.get(s.id) ?? now) + IDLE_MS);
+    }
+    if (wake.length) {
+      const at = Math.min(...wake);
+      this.watchTimer = setTimeout(() => this.checkIdle(), Math.max(50, at - now + 20));
+    }
+  }
+
+  private checkIdle() {
+    const g = this.game;
+    if (!g) return;
+    const now = Date.now();
+    for (const id of waitingOn(g)) {
+      const s = this.seats.find((x) => x.id === id);
+      if (!s || s.isBot || !s.conn || s.idle) continue;
+      if (now - (this.waitSince.get(id) ?? now) >= IDLE_MS) {
+        s.idle = true;
+        send(s.conn, { t: 'idle' });
+      }
+    }
+    this.schedule();
+  }
+
+  private runAutopilot(pid: string) {
+    const g = this.game;
+    if (!g) return;
+    const action = botDecide(viewFor(g, pid), pid, Math.random);
+    let res = action ? applyAction(g, pid, action) : null;
+    if (!res?.ok) {
+      console.warn(`[room ${this.code}] autopilot move rejected (${res && !res.ok ? res.error : 'no move'}):`, action);
+      const fallbacks: Action[] = [{ type: 'done' }, { type: 'assist' }, { type: 'excess' }, { type: 'discard' }];
+      for (const f of fallbacks) {
+        res = applyAction(g, pid, f);
+        if (res.ok) break;
+      }
+    }
+    if (res?.ok) this.afterChange(res.events);
+    else this.schedule();
+  }
+
+  dispose() {
+    this.clearTimers();
+    for (const s of this.seats) {
+      if (s.conn) {
+        send(s.conn, { t: 'left' });
+        s.conn.room = null;
+        s.conn.pid = null;
+      }
+    }
+  }
+}
+
+export class RoomManager {
+  private rooms = new Map<string, Room>();
+
+  constructor() {
+    setInterval(() => {
+      const now = Date.now();
+      for (const r of this.rooms.values()) r.tick(now);
+    }, 5000).unref();
+  }
+
+  private newCode(): string {
+    for (;;) {
+      let code = '';
+      for (let i = 0; i < 4; i++) code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+      if (!this.rooms.has(code)) return code;
+    }
+  }
+
+  get(code: string): Room | undefined {
+    return this.rooms.get(code.toUpperCase());
+  }
+
+  create(): Room {
+    const room = new Room(this.newCode(), (r) => this.remove(r));
+    this.rooms.set(room.code, room);
+    return room;
+  }
+
+  remove(room: Room) {
+    if (this.rooms.get(room.code) !== room) return;
+    room.dispose();
+    this.rooms.delete(room.code);
+  }
+
+  get size() {
+    return this.rooms.size;
+  }
+}
