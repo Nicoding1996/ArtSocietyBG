@@ -35,6 +35,7 @@ describe('rooms: pausing and players who are away', () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('starts with the autopilot setting off, and only the host changes it, in the lobby', () => {
@@ -179,6 +180,29 @@ describe('rooms: pausing and players who are away', () => {
       expect(a.sent.some((m) => m.t === 'idle')).toBe(on);
       expect(player(room, aSeat.id).starter === null).toBe(on);
     }
+  });
+
+  it('an error while the autopilot plays is logged, and the room and its other bots carry on', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const room = new Room('TEST', () => undefined);
+    const a = tab('tok-a');
+    const aSeat = seatOf(room, a.conn);
+    send(room, a.conn, { t: 'addBot' });
+    send(room, a.conn, { t: 'addBot' });
+    send(room, a.conn, { t: 'start' });
+    const [, broken, fine] = room.game!.players;
+    // Stands in for a bug: anything that reads this wall throws, the bots' planning included.
+    (broken as unknown as { wall: null }).wall = null;
+    // Before the guard, the error escaped the timer: on the server that ends every game.
+    expect(() => vi.advanceTimersByTime(60_000)).not.toThrow();
+    expect(errors).toHaveBeenCalled();
+    // The broken seat is tried again when the game changes, not in a loop.
+    expect(errors.mock.calls.length).toBeLessThan(20);
+    expect(broken.starter).not.toBeNull();
+    expect(fine.starter).toBeNull();
+    send(room, a.conn, { t: 'act', action: { type: 'starter', x: 4, y: 4 } });
+    expect(player(room, aSeat.id).starter).toBeNull();
   });
 
   it('a player who leaves is replaced by a bot whatever the setting', () => {

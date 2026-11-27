@@ -29,7 +29,7 @@ The PC that runs `npm start` is the host. Everyone else only needs a browser.
 
 Seats survive page reloads and short disconnects. By default the game waits for anyone who drops out; the host can click **Let a bot play** on that player's card, and the player gets the seat back when they return. The host can instead switch on **Autopilot for away players** in the lobby: then a bot plays for anyone disconnected for 20 seconds or sitting on a decision for 2 minutes, until they are back. A player who leaves the game is always replaced by a bot. With no human connected the table pauses, and an empty room closes after 30 minutes.
 
-When you are the only person at the table (everyone else is a bot, or away), Esc pauses the game: the bots wait until you resume. Switching to another tab pauses it too, and coming back resumes it. With other players at the table, Esc opens the same menu without pausing.
+When you are the only person at the table (everyone else is a bot, or away), Esc pauses the game: the bots wait until you resume. Switching to another tab pauses it too, and coming back resumes it. With other players at the table, Esc opens the same menu without pausing. If it becomes your turn while the game is in a background tab, the tab's title says "Your turn" and a chime plays (when sound is on).
 
 ## How to play
 
@@ -46,7 +46,7 @@ When you are the only person at the table (everyone else is a bot, or away), Esc
 **Hanging**
 
 - A tile must fit inside the grid and touch another tile along an edge. Tiles are never turned.
-- **Until you press Done for the round**, you may move the tiles you hung this round. Tiles from earlier rounds stay put, and so do the paintings in a frame match that earned decor, so the decor stays earned. A move never earns decor, and every tile must still touch the rest of the wall.
+- **Until you press Done for the round**, you may move the tiles you hung this round. Tiles from earlier rounds stay put, and so do the paintings in a frame match that earned decor, so the decor stays earned. A move never earns decor, and every tile must still touch the rest of the wall. While a painting from a museum swap waits to be hung, nothing moves.
 - **Same frame** as a neighbour: take decor worth up to the number of matching neighbours. With 4 or more matches you may take several decor tiles that add up to that number. Decor earned in the round you complete your wall is not taken.
 - **Same type** touching: a faux pas. Every painting involved scores no type points.
 - Your **assistant** holds one tile for later. A tile still on the assistant at the end scores nothing.
@@ -84,7 +84,7 @@ The rulebook leaves a few cases open. This version follows the rulebook wording,
 
 ```bash
 npm run dev        # Vite on http://localhost:5173 (hot reload) + game server on :3000
-npm test           # rules-engine tests (with full bot games at every table size) and room tests (pausing, away players)
+npm test           # rules-engine tests (with full bot games at every table size), room tests (pausing, away players, autopilot errors) and the turn alert
 npm run sim        # balance report for 2-4 players: rounds, end reasons, scores, ties, seat win share
 npm run typecheck
 ```

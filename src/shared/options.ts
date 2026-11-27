@@ -52,7 +52,7 @@ export interface TaskOptions {
   canExcess: boolean;
   canDiscard: boolean;
   canDone: boolean;
-  /** Tiles hung this round that can move now (not while decor waits to be chosen). */
+  /** Tiles hung this round that can move now (not while decor waits to be chosen or a museum painting to be hung). */
   moves: string[];
 }
 
@@ -87,7 +87,7 @@ export function taskOptions(g: Pick<GameState, 'museum' | 'decor'>, p: Pick<Play
     canExcess: free && auctionPainting && !headFits && exchange.length === 0,
     canDiscard: free && !!head && head.tile.kind === 'decor' && !headFits && !!p.assistant,
     canDone: free && !head,
-    moves: free ? movableTiles(p) : [],
+    moves: free && head?.from !== 'museum' ? movableTiles(p) : [],
   };
 }
 

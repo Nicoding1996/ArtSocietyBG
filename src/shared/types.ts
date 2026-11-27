@@ -212,7 +212,7 @@ export interface PlayerView extends Omit<PlayerState, 'hand' | 'stack' | 'bid'> 
   hasBid: boolean;
 }
 
-export interface GameView extends Omit<GameState, 'rng' | 'supply' | 'players'> {
+export interface GameView extends Omit<GameState, 'rng' | 'seed' | 'supply' | 'players'> {
   players: PlayerView[];
   /** Face-down paintings left, by size. */
   supply: Record<string, number>;

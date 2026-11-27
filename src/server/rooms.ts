@@ -1,7 +1,7 @@
 import { randomBytes, randomInt } from 'node:crypto';
 import type { WebSocket } from 'ws';
-import { applyAction, createGame, viewFor, waitingOn } from '../shared/engine';
-import { botDecide } from '../shared/bot';
+import { applyAction, createGame, viewFor, waitingOn, type Result } from '../shared/engine';
+import { botDecide, fallbackActions } from '../shared/bot';
 import { BOT_NAMES, PLAYER_COLORS, RULES } from '../shared/content';
 import { eventsAnimationMs } from '../shared/timing';
 import {
@@ -16,6 +16,7 @@ import {
   type RoomView,
   type ServerMessage,
 } from '../shared/types';
+import { guarded } from './guard';
 
 const FAST = process.env.ART_SOCIETY_FAST === '1';
 /** How long a disconnected player's seat waits before the autopilot plays for them. */
@@ -73,6 +74,8 @@ export class Room {
   private busyUntil = 0;
   /** When each player the game is waiting on started waiting (for the idle autopilot). */
   private waitSince = new Map<string, number>();
+  /** Seats the autopilot found no legal move for. They wait until the game changes, so it never tries in a loop. */
+  private stuck = new Set<string>();
 
   constructor(
     readonly code: string,
@@ -389,6 +392,7 @@ export class Room {
     this.status = 'lobby';
     this.paused = false;
     this.waitSince.clear();
+    this.stuck.clear();
     for (const s of this.seats) s.handedOver = false;
     for (const s of [...this.seats]) if (s.left || (!s.isBot && !s.conn)) this.removeSeat(s.id);
     this.broadcastRoom();
@@ -410,6 +414,8 @@ export class Room {
 
   private afterChange(events: GameEvent[]) {
     const now = Date.now();
+    // The game has changed, so a seat the autopilot was stuck on may have a move now.
+    this.stuck.clear();
     this.busyUntil = Math.max(this.busyUntil, now) + eventsAnimationMs(events);
     this.broadcastGame(events);
     this.schedule();
@@ -464,10 +470,10 @@ export class Room {
     for (const id of waiting) if (!this.waitSince.has(id)) this.waitSince.set(id, Math.max(now, this.busyUntil));
     const seats = waiting.map((id) => this.seats.find((s) => s.id === id)).filter((s): s is Seat => !!s);
 
-    const auto = seats.find((s) => this.autopilot(s, now));
+    const auto = seats.find((s) => this.autopilot(s, now) && !this.stuck.has(s.id));
     if (auto) {
       const think = FAST ? 120 : auto.isBot ? 650 + randomInt(650) : 450;
-      this.botTimer = setTimeout(() => this.runAutopilot(auto.id), Math.max(0, this.busyUntil - now) + think);
+      this.botTimer = setTimeout(() => guarded(`room ${this.code}: autopilot`, () => this.runAutopilot(auto.id)), Math.max(0, this.busyUntil - now) + think);
     }
     // Wake up when an absent player's grace runs out or a present one has been idle too long (only
     // when the room lets the autopilot stand in; otherwise the game simply waits for them).
@@ -479,7 +485,7 @@ export class Room {
     }
     if (wake.length) {
       const at = Math.min(...wake);
-      this.watchTimer = setTimeout(() => this.checkIdle(), Math.max(50, at - now + 20));
+      this.watchTimer = setTimeout(() => guarded(`room ${this.code}: idle check`, () => this.checkIdle()), Math.max(50, at - now + 20));
     }
   }
 
@@ -501,19 +507,35 @@ export class Room {
 
   private runAutopilot(pid: string) {
     const g = this.game;
-    if (!g) return;
-    const action = botDecide(viewFor(g, pid), pid, Math.random);
-    let res = action ? applyAction(g, pid, action) : null;
-    if (!res?.ok) {
-      console.warn(`[room ${this.code}] autopilot move rejected (${res && !res.ok ? res.error : 'no move'}):`, action);
-      const fallbacks: Action[] = [{ type: 'done' }, { type: 'assist' }, { type: 'excess' }, { type: 'discard' }, { type: 'skipDecor' }];
-      for (const f of fallbacks) {
-        res = applyAction(g, pid, f);
+    if (!g || g.phase.kind === 'over') return;
+    let res: Result | null = null;
+    try {
+      const view = viewFor(g, pid);
+      let choice: Action | null = null;
+      try {
+        choice = botDecide(view, pid, Math.random);
+      } catch (err) {
+        console.error(`[room ${this.code}] the bot failed to choose a move for ${pid}:`, err);
+      }
+      if (choice) {
+        res = applyAction(g, pid, choice);
+        if (!res.ok) console.warn(`[room ${this.code}] autopilot move rejected (${res.error}):`, choice);
+      }
+      // Plain legal moves keep the game going when the bot has no answer.
+      for (const a of res?.ok ? [] : fallbackActions(view, pid)) {
+        res = applyAction(g, pid, a);
         if (res.ok) break;
       }
+    } catch (err) {
+      console.error(`[room ${this.code}] the autopilot failed for ${pid}:`, err);
+      res = null;
     }
-    if (res?.ok) this.afterChange(res.events);
-    else this.schedule();
+    if (res?.ok) return this.afterChange(res.events);
+    // Trying again at once would fail the same way, over and over. This seat waits until the game
+    // changes or its player comes back, and the other seats carry on meanwhile.
+    console.error(`[room ${this.code}] the autopilot found no legal move for ${pid} (${g.phase.kind}); it waits until the game changes.`);
+    this.stuck.add(pid);
+    this.schedule();
   }
 
   dispose() {
@@ -534,7 +556,8 @@ export class RoomManager {
   constructor() {
     setInterval(() => {
       const now = Date.now();
-      for (const r of this.rooms.values()) r.tick(now);
+      // One room's trouble must not stop the housekeeping of the others.
+      for (const r of this.rooms.values()) guarded(`room ${r.code}: housekeeping`, () => r.tick(now));
     }, 5000).unref();
   }
 

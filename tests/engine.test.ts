@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advancePrestige, applyAction, createGame, viewFor, waitingOn } from '../src/shared/engine';
-import { botDecide } from '../src/shared/bot';
+import { botDecide, fallbackActions } from '../src/shared/bot';
 import { DECOR_INFO, PAINTING_SIZES, RULES, buildPaintings, makeDecor, sizeKey } from '../src/shared/content';
 import { computeResults, ranking, scoreWall } from '../src/shared/scoring';
 import { taskOptions } from '../src/shared/options';
@@ -136,6 +136,13 @@ describe('auction', () => {
     expect(v.supply['1x2']).toBe(16);
     expect((v as unknown as Record<string, unknown>).rng).toBeUndefined();
     expect(JSON.stringify(v)).not.toContain(g.supply[0].title);
+  });
+
+  it('views leave out the seed, which would rebuild the face-down supply in order', () => {
+    const g = newGame(2, 987654321);
+    const v = viewFor(g, 'p0');
+    expect('seed' in v).toBe(false);
+    expect(JSON.stringify(v)).not.toContain('987654321');
   });
 });
 
@@ -419,6 +426,38 @@ describe('moving tiles hung this round', () => {
     expect(g.log.at(-1)?.text).toMatch(/Faux pas/);
     const s = scoreWall({ id: p.id, wall: p.wall, excess: [], hand: [] }, ranking({ city: 5, portrait: 3, still: 0, landscape: 0 }));
     expect(s.genres.find((x) => x.genre === 'city')).toMatchObject({ count: 2, faux: 2 });
+  });
+
+  it('nothing moves while a painting from a museum swap waits to be hung', () => {
+    const g = newGame(2);
+    hangStarters(g);
+    const p = g.players[0];
+    // The starting painting at x 4-5, y 4-6, and sconces everywhere else except the corners (0, 0) and
+    // (9, 13) and a 1x2 slot at x 6, y 4-5.
+    p.wall = [{ tile: art('still', 'walnut', 2, 3), x: 4, y: 4 }];
+    for (let y = 0; y < 14; y++) {
+      for (let x = 0; x < 10; x++) {
+        const starter = x >= 4 && x <= 5 && y >= 4 && y <= 6;
+        const free = (x === 0 && y === 0) || (x === 9 && y === 13) || (x === 6 && (y === 4 || y === 5));
+        if (!starter && !free) p.wall.push({ tile: makeDecor('1x1', `f${x}-${y}`), x, y });
+      }
+    }
+    const big = art('portrait', 'gilded', 3, 3); // no room anywhere
+    const small = art('portrait', 'silver', 1, 2); // fits only in the slot
+    g.museum.portrait = [small];
+    giveTask(g, p, big);
+    const helper = makeDecor('1x1', 'helper');
+    p.assistant = helper;
+    act(g, p.id, { type: 'hang', which: 'assistant', x: 0, y: 0 });
+    act(g, p.id, { type: 'exchange', museum: small.id });
+    // Moving the sconce into the slot would leave the museum painting with nowhere to go.
+    expect(taskOptions(g, p)!.moves).toEqual([]);
+    expect(reject(g, p.id, { type: 'move', tile: helper.id, x: 6, y: 4 })).toMatch(/museum first/);
+    expect(botDecide(viewFor(g, p.id), p.id, () => 0.5)).toEqual({ type: 'hang', which: 'new', x: 6, y: 4 });
+    act(g, p.id, { type: 'hang', which: 'new', x: 6, y: 4 });
+    // Once it hangs, the tiles hung this round may move again.
+    expect(taskOptions(g, p)!.moves).toEqual([helper.id]);
+    act(g, p.id, { type: 'move', tile: helper.id, x: 9, y: 13 });
   });
 });
 
@@ -859,5 +898,19 @@ describe('full games', () => {
   it('bots only use what their own view shows', () => {
     const { s } = playBotGame(77, 3);
     expect(s.round).toBeGreaterThan(5);
+  });
+
+  it('the plain fallback moves the server keeps for the autopilot can finish a game on their own', () => {
+    for (let n = RULES.minPlayers; n <= RULES.maxPlayers; n++) {
+      const s = newGame(n, 500 + n);
+      for (let steps = 0; s.phase.kind !== 'over'; steps++) {
+        if (steps > 5000) throw new Error('the game did not finish');
+        const pid = waitingOn(s)[0];
+        const moves = fallbackActions(viewFor(s, pid), pid);
+        if (!moves.some((a) => applyAction(s, pid, a).ok)) throw new Error(`no fallback move for ${pid} in phase ${s.phase.kind}`);
+        checkInvariants(s);
+      }
+      expect(s.results?.players).toHaveLength(n);
+    }
   });
 });

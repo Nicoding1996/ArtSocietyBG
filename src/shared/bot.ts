@@ -304,3 +304,60 @@ export function botDecide(v: GameView, me: string, rand: Rand = Math.random): Ac
       return null;
   }
 }
+
+/**
+ * Plain legal moves for `me`, in a fixed order, for when botDecide has none or fails: the server tries
+ * them until the engine accepts one. Moving tiles is left out, since the game never needs a move to go on.
+ */
+export function fallbackActions(v: GameView, me: string): Action[] {
+  const p = v.players.find((x) => x.id === me);
+  if (!p) return [];
+  const ph = v.phase;
+  const out: Action[] = [];
+  switch (ph.kind) {
+    case 'setup': {
+      const s = p.starter ? starterSpots(p.starter.w, p.starter.h)[0] : undefined;
+      if (s) out.push({ type: 'starter', x: s.x, y: s.y });
+      break;
+    }
+    case 'select': {
+      const want = v.players.length + 1;
+      const sizes: string[] = [];
+      for (const [k, n] of Object.entries(v.supply)) for (let i = 0; i < n && sizes.length < want; i++) sizes.push(k);
+      out.push({ type: 'auction', sizes });
+      break;
+    }
+    case 'bid':
+      if (p.hand?.length) out.push({ type: 'bid', card: Math.min(...p.hand) });
+      break;
+    case 'acquire': {
+      if (!p.task) {
+        if (v.lots.length) out.push({ type: 'take', lot: v.lots[0].id });
+        break;
+      }
+      const o = taskOptions(v, p);
+      if (!o) break;
+      if (o.stage === 'decor') {
+        if (o.decorShapes.length) out.push({ type: 'decor', shapes: [o.decorShapes[0]] });
+        for (const s of o.swaps) out.push({ type: 'swapDecor', shape: s.shape, x: s.x, y: s.y });
+        out.push({ type: 'skipDecor' });
+        break;
+      }
+      const grid = gridOf(p.wall);
+      const spot = (t: Tile | null | undefined) => (t ? legalSpots(grid, t.w, t.h)[0] : undefined);
+      const head = o.canHangHead ? spot(o.head?.tile) : undefined;
+      if (head) out.push({ type: 'hang', which: 'new', x: head.x, y: head.y });
+      for (const m of o.exchange) out.push({ type: 'exchange', museum: m.id });
+      if (o.canAssist) out.push({ type: 'assist' });
+      if (o.canDiscard) out.push({ type: 'discard' });
+      if (o.canExcess) out.push({ type: 'excess' });
+      if (o.canDone) out.push({ type: 'done' });
+      const aide = o.canHangAssistant ? spot(p.assistant) : undefined;
+      if (aide) out.push({ type: 'hang', which: 'assistant', x: aide.x, y: aide.y });
+      break;
+    }
+    case 'over':
+      break;
+  }
+  return out;
+}

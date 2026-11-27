@@ -5,6 +5,7 @@ import { createReadStream, existsSync, statSync } from 'node:fs';
 import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
+import { guarded } from './guard';
 import { RoomManager, cleanName, type Conn } from './rooms';
 import { sharedSourceHash } from './sourceHash';
 import type { ClientMessage, ServerMessage } from '../shared/types';
@@ -145,54 +146,61 @@ wss.on('connection', (ws) => {
       return;
     }
     if (!msg || typeof msg !== 'object' || typeof msg.t !== 'string') return;
-
-    if (msg.t === 'hello') {
-      if (typeof msg.token !== 'string' || !TOKEN_RE.test(msg.token)) return send(ws, { t: 'error', message: 'Bad session token.' });
-      conn.token = msg.token;
-      if (typeof msg.room === 'string') {
-        const room = rooms.get(msg.room);
-        const seat = room?.seatByToken(msg.token);
-        if (room && seat) room.attach(conn, seat);
-        // The remembered room is gone (server restarted or the seat expired).
-        else send(ws, { t: 'left' });
-      }
-      return;
+    // A message that runs into a bug gets an error back, and the server and its other games carry on.
+    if (!guarded(`message "${msg.t.slice(0, 24)}"`, () => onMessage(conn, msg))) {
+      send(ws, { t: 'error', message: 'Something went wrong on the server. Please try that again.' });
     }
-    if (!conn.token) return send(ws, { t: 'error', message: 'Say hello first.' });
-
-    if (msg.t === 'create' || msg.t === 'join') {
-      if (conn.room) conn.room.leave(conn);
-      let room;
-      if (msg.t === 'create') room = rooms.create();
-      else {
-        room = typeof msg.code === 'string' ? rooms.get(msg.code.trim()) : undefined;
-        if (!room) return send(ws, { t: 'error', message: 'No room with that code. Check the code and try again.' });
-        const existing = room.seatByToken(conn.token);
-        if (existing) return room.attach(conn, existing);
-      }
-      const seat = room.addHuman(conn, cleanName(msg.name));
-      if (typeof seat === 'string') {
-        if (msg.t === 'create') rooms.remove(room);
-        return send(ws, { t: 'error', message: seat });
-      }
-      return;
-    }
-    if (msg.t === 'leave') {
-      conn.room?.leave(conn);
-      send(ws, { t: 'left' });
-      return;
-    }
-    if (!conn.room) return send(ws, { t: 'error', message: 'Join a room first.' });
-    conn.room.handle(conn, msg);
   });
 
   ws.on('close', () => {
     clearInterval(ping);
     clearInterval(refill);
-    conn.room?.detach(conn);
+    guarded('disconnect', () => conn.room?.detach(conn));
   });
   ws.on('error', () => ws.terminate());
 });
+
+function onMessage(conn: Conn, msg: ClientMessage) {
+  const ws = conn.ws;
+  if (msg.t === 'hello') {
+    if (typeof msg.token !== 'string' || !TOKEN_RE.test(msg.token)) return send(ws, { t: 'error', message: 'Bad session token.' });
+    conn.token = msg.token;
+    if (typeof msg.room === 'string') {
+      const room = rooms.get(msg.room);
+      const seat = room?.seatByToken(msg.token);
+      if (room && seat) room.attach(conn, seat);
+      // The remembered room is gone (server restarted or the seat expired).
+      else send(ws, { t: 'left' });
+    }
+    return;
+  }
+  if (!conn.token) return send(ws, { t: 'error', message: 'Say hello first.' });
+
+  if (msg.t === 'create' || msg.t === 'join') {
+    if (conn.room) conn.room.leave(conn);
+    let room;
+    if (msg.t === 'create') room = rooms.create();
+    else {
+      room = typeof msg.code === 'string' ? rooms.get(msg.code.trim()) : undefined;
+      if (!room) return send(ws, { t: 'error', message: 'No room with that code. Check the code and try again.' });
+      const existing = room.seatByToken(conn.token);
+      if (existing) return room.attach(conn, existing);
+    }
+    const seat = room.addHuman(conn, cleanName(msg.name));
+    if (typeof seat === 'string') {
+      if (msg.t === 'create') rooms.remove(room);
+      return send(ws, { t: 'error', message: seat });
+    }
+    return;
+  }
+  if (msg.t === 'leave') {
+    conn.room?.leave(conn);
+    send(ws, { t: 'left' });
+    return;
+  }
+  if (!conn.room) return send(ws, { t: 'error', message: 'Join a room first.' });
+  conn.room.handle(conn, msg);
+}
 
 server.listen(PORT, '0.0.0.0', () => {
   const lan = lanAddresses().map((a) => `http://${a}:${PORT}`);

@@ -380,6 +380,8 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
     }
     case 'move': {
       if (t.rewards.length) return 'Choose your decor tile first.';
+      // The swap was allowed because the museum painting fits: a move could take its only spot.
+      if (head?.from === 'museum') return 'Hang the painting from the museum first.';
       const i = p.wall.findIndex((h) => h.tile.id === a.tile);
       if (i < 0 || !t.placed.includes(a.tile)) return 'Only tiles hung this round can be moved.';
       if (t.locked.includes(a.tile)) return 'That painting is part of a frame match that earned decor, so it stays put.';
@@ -669,6 +671,7 @@ export function viewFor(g: GameState, pid: string | null): GameView {
     const k = sizeKey(t.w, t.h);
     supply[k] = (supply[k] ?? 0) + 1;
   }
-  const { rng: _rng, supply: _s, players: _p, ...rest } = g;
+  // The seed stays on the server too: with it, createGame rebuilds the face-down supply in order.
+  const { rng: _rng, seed: _seed, supply: _s, players: _p, ...rest } = g;
   return { ...rest, players, supply, supplyTotal: g.supply.length, you: pid };
 }

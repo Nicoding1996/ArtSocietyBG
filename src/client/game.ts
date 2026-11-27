@@ -8,6 +8,7 @@ import { CELL_H } from './three/layout';
 import { PILE_SCALE } from './three/table';
 import { ASSIST_SCALE, EXCESS_SCALE, STAGE_SCALE } from './three/wall';
 import type { World } from './three/world';
+import { TurnAlert } from './turnAlert';
 import { Ceremony } from './ui/ceremony';
 import type { ChatPanel } from './ui/chat';
 import { el, esc, sleep } from './ui/dom';
@@ -18,6 +19,8 @@ import { Prompts } from './ui/prompts';
 import { refreshViewers, showGalleries, showMuseum, viewerOpen } from './ui/viewers';
 
 const CAMERA_KEY = 'artsociety.camera';
+/** The page's own title, which the turn alert changes while the tab is in the background. */
+const PAGE_TITLE = document.title;
 
 interface Shown {
   wall: Hung[];
@@ -54,6 +57,8 @@ export class GameScreen {
   private autoPaused = false;
   /** The pause state this tab last asked the server for, until a room update confirms it. */
   private pauseWish: boolean | null = null;
+  /** Tells a player in another tab that the game is waiting for them. */
+  private turn: TurnAlert;
 
   constructor(
     private world: World,
@@ -137,6 +142,21 @@ export class GameScreen {
       chat,
     );
     this.hud.promptSlot.appendChild(this.prompts.root);
+    this.turn = new TurnAlert(
+      {
+        get hidden() {
+          return document.hidden;
+        },
+        get title() {
+          return document.title;
+        },
+        set title(t: string) {
+          document.title = t;
+        },
+        chime: () => this.audio.chime(),
+      },
+      PAGE_TITLE,
+    );
     this.ceremony = new Ceremony(world, audio, () => this.net.send({ t: 'toLobby' }), isHost);
     this.root.appendChild(this.hud.root);
     this.ceremony.mount(this.root);
@@ -316,6 +336,7 @@ export class GameScreen {
     window.removeEventListener('keydown', this.onKey);
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.world.tw.setInstant(false);
+    this.turn.clear();
     recap(null);
     if (viewerOpen('galleries') || viewerOpen('museum')) closeModal();
     this.prompts.hide();
@@ -396,6 +417,7 @@ export class GameScreen {
       return;
     }
     this.world.tw.setInstant(false);
+    this.turn.clear();
     if (this.autoPaused) {
       this.autoPaused = false;
       if (!this.menu) this.askPause(false);
@@ -782,7 +804,9 @@ export class GameScreen {
     }
     for (const p of v.players) t.setStack(p.id, p.stackCount, p.stackTop, v.phase.kind === 'bid' && p.hasBid);
     if (v.phase.kind !== 'over' && v.phase.kind !== 'setup') void t.moveGavel(null, w.sideOf(v.players[v.auctioneer].id));
-    w.setActive(waitingOnView(v));
+    const waiting = waitingOnView(v);
+    w.setActive(waiting);
+    this.turn.update(!!me && waiting.includes(me));
     this.chat.setColors(Object.fromEntries(v.players.map((p) => [p.id, p.color])));
     this.chat.setLog(v.log);
     this.hud.render(v, me, this.viewName(), { host: this.isHost(), canPause: this.canPause() });
