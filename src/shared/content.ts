@@ -87,30 +87,41 @@ export interface FrameDef {
 }
 
 export const FRAME_INFO: Record<FrameId, FrameDef> = {
-  gilded: { name: 'Gilded', color: '#d9ac4a', blurb: 'Carved gold with curling corners.' },
-  ivory: { name: 'Ivory', color: '#efe5cf', blurb: 'Cream lacquer trimmed with beads.' },
-  silver: { name: 'Silver', color: '#b8c3cf', blurb: 'Cool silver leaf with a bevelled edge.' },
-  walnut: { name: 'Walnut', color: '#8a5634', blurb: 'Plain dark wood, polished smooth.' },
+  gilded: { name: 'Gilded', color: '#d9ac4a', blurb: 'Carved gold, with shells on the corners and scrolls along the edges.' },
+  // Shown as "Pearl"; the id stays 'ivory' so nothing that stores frames has to change.
+  ivory: { name: 'Pearl', color: '#efe8df', blurb: 'Pearl-white lacquer with stepped corners, trimmed in gold.' },
+  silver: { name: 'Silver', color: '#b8c3cf', blurb: 'Slim polished silver with rounded corners.' },
+  walnut: { name: 'Walnut', color: '#8a5634', blurb: 'Wide grained walnut with a brass inner edge.' },
 };
 
 export interface DecorDef {
   name: string;
+  /** Lower-case plural, for sentences like "3 candle sconces". */
+  plural: string;
   w: number;
   h: number;
   points: number;
 }
 
 export const DECOR_INFO: Record<DecorShape, DecorDef> = {
-  '1x1': { name: 'Candle sconce', w: 1, h: 1, points: 1 },
-  '2x1': { name: 'Pair of cameos', w: 2, h: 1, points: 2 },
-  '1x2': { name: 'Potted fern', w: 1, h: 2, points: 2 },
-  '3x1': { name: 'Curio shelf', w: 3, h: 1, points: 3 },
-  '1x3': { name: 'Pier mirror', w: 1, h: 3, points: 3 },
+  '1x1': { name: 'Candle sconce', plural: 'candle sconces', w: 1, h: 1, points: 1 },
+  '2x1': { name: 'Pair of cameos', plural: 'pairs of cameos', w: 2, h: 1, points: 2 },
+  '1x2': { name: 'Potted fern', plural: 'potted ferns', w: 1, h: 2, points: 2 },
+  '3x1': { name: 'Curio shelf', plural: 'curio shelves', w: 3, h: 1, points: 3 },
+  '1x3': { name: 'Pier mirror', plural: 'pier mirrors', w: 1, h: 3, points: 3 },
 };
 
 export function makeDecor(shape: DecorShape, id: string): Decor {
   const d = DECOR_INFO[shape];
   return { id, kind: 'decor', shape, w: d.w, h: d.h, points: d.points };
+}
+
+/** Names a group of decor tiles: "3 candle sconces", "a candle sconce and a pair of cameos". */
+export function decorList(tiles: readonly { shape: DecorShape }[]): string {
+  const counts = new Map<DecorShape, number>();
+  for (const t of tiles) counts.set(t.shape, (counts.get(t.shape) ?? 0) + 1);
+  const parts = [...counts].map(([s, n]) => (n === 1 ? `a ${DECOR_INFO[s].name.toLowerCase()}` : `${n} ${DECOR_INFO[s].plural}`));
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : (parts[0] ?? '');
 }
 
 export const PLAYER_COLORS = ['#f08a24', '#1fb5a8', '#9b6bf0', '#ff7eb6', '#d9d2c3', '#5cc8ff'];

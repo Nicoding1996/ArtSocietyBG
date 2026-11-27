@@ -9,7 +9,6 @@ export const gilt = new THREE.MeshStandardMaterial({ color: '#d9b25f', metalness
 export const darkGold = new THREE.MeshStandardMaterial({ color: '#a77d32', metalness: 1, roughness: 0.44 });
 export const brass = new THREE.MeshStandardMaterial({ color: '#c9a25a', metalness: 0.9, roughness: 0.4 });
 export const silver = new THREE.MeshStandardMaterial({ color: '#bfc6cf', metalness: 1, roughness: 0.48 });
-export const ivory = new THREE.MeshPhysicalMaterial({ color: '#efe5cf', roughness: 0.45, clearcoat: 0.35, clearcoatRoughness: 0.4 });
 export const blackLacquer = new THREE.MeshPhysicalMaterial({ color: '#1a1513', roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.15 });
 export const mirror = new THREE.MeshStandardMaterial({ color: '#cfd8de', metalness: 1, roughness: 0.04 });
 // Brighter than white on purpose, so the bloom pass gives each flame a small halo.

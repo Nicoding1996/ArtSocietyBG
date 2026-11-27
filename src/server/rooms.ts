@@ -12,6 +12,7 @@ import {
   type GameState,
   type HatId,
   type LobbyPlayer,
+  type RoomSettings,
   type RoomView,
   type ServerMessage,
 } from '../shared/types';
@@ -41,6 +42,8 @@ interface Seat extends LobbyPlayer {
   disconnectedAt: number;
   left: boolean;
   idle: boolean;
+  /** The host let a bot play this seat while its player is disconnected; cleared when they come back. */
+  handedOver: boolean;
 }
 
 function send(conn: Conn | null, msg: ServerMessage) {
@@ -61,6 +64,10 @@ export class Room {
   status: 'lobby' | 'game' = 'lobby';
   game: GameState | null = null;
   lastActivity = Date.now();
+  /** Chosen by the host in the lobby. */
+  settings: RoomSettings = { autopilot: false };
+  /** The only human at the table paused the game; the bots wait. */
+  paused = false;
   private botTimer: NodeJS.Timeout | null = null;
   private watchTimer: NodeJS.Timeout | null = null;
   private busyUntil = 0;
@@ -93,6 +100,7 @@ export class Room {
       disconnectedAt: 0,
       left: false,
       idle: false,
+      handedOver: false,
     };
     this.seats.push(seat);
     if (!this.hostId) this.hostId = seat.id;
@@ -109,6 +117,8 @@ export class Room {
     seat.conn = conn;
     seat.connected = true;
     seat.left = false;
+    // Back at the table: the seat is theirs again.
+    seat.handedOver = false;
     conn.room = this;
     conn.pid = seat.id;
     this.touch();
@@ -116,6 +126,8 @@ export class Room {
       const p = this.game.players.find((x) => x.id === seat.id);
       if (p) p.connected = true;
     }
+    // A pause is only for a player alone with the bots.
+    if (this.paused && this.connectedHumans() > 1) this.setPaused(false);
     this.broadcastRoom();
     if (this.game) {
       this.broadcastGame([]);
@@ -208,7 +220,20 @@ export class Room {
         isBot: s.isBot,
         connected: s.isBot || (!!s.conn && !s.left),
       })),
+      settings: { ...this.settings },
+      paused: this.paused,
     };
+  }
+
+  private connectedHumans(): number {
+    return this.seats.filter((s) => !s.isBot && !!s.conn && !s.left).length;
+  }
+
+  private setPaused(on: boolean) {
+    if (this.paused === on) return;
+    this.paused = on;
+    // Waiting starts afresh after a pause, so nobody counts as idle for the time it lasted.
+    if (!on) this.waitSince.clear();
   }
 
   broadcastRoom() {
@@ -272,6 +297,7 @@ export class Room {
           disconnectedAt: 0,
           left: false,
           idle: false,
+          handedOver: false,
         });
         this.broadcastRoom();
         return;
@@ -315,6 +341,32 @@ export class Room {
       }
       case 'back':
         return;
+      case 'settings': {
+        if (!isHost || this.status !== 'lobby') return err('Only the host can change the settings, in the lobby.');
+        this.settings.autopilot = msg.autopilot === true;
+        this.broadcastRoom();
+        return;
+      }
+      case 'handOver': {
+        if (!isHost || !this.game || this.game.phase.kind === 'over') return err('Only the host can do that during a game.');
+        const target = this.seats.find((s) => s.id === msg.id);
+        if (!target || target.isBot || target === seat) return err('That seat cannot be handed to a bot.');
+        if (target.conn) return err(`${target.name} is at the table again.`);
+        if (target.left || target.handedOver) return;
+        target.handedOver = true;
+        this.schedule();
+        return;
+      }
+      case 'pause': {
+        if (!this.game || this.game.phase.kind === 'over') return;
+        if (msg.on === true) {
+          if (this.connectedHumans() > 1) return err('Other collectors are at the table, so the game cannot pause.');
+          this.setPaused(true);
+        } else this.setPaused(false);
+        this.broadcastRoom();
+        this.schedule();
+        return;
+      }
       case 'react':
         if (!REACTIONS.includes(msg.emoji)) return;
         if (!this.rateOk(conn, 8, 4000)) return;
@@ -335,7 +387,9 @@ export class Room {
     this.clearTimers();
     this.game = null;
     this.status = 'lobby';
+    this.paused = false;
     this.waitSince.clear();
+    for (const s of this.seats) s.handedOver = false;
     for (const s of [...this.seats]) if (s.left || (!s.isBot && !s.conn)) this.removeSeat(s.id);
     this.broadcastRoom();
   }
@@ -346,6 +400,11 @@ export class Room {
     if (!res.ok) return send(seat.conn, { t: 'error', message: res.error });
     seat.idle = false;
     this.waitSince.delete(seat.id);
+    // Playing a move ends a pause.
+    if (this.paused) {
+      this.setPaused(false);
+      this.broadcastRoom();
+    }
     this.afterChange(res.events);
   }
 
@@ -364,8 +423,30 @@ export class Room {
     this.botTimer = this.watchTimer = null;
   }
 
+  /**
+   * Whether a bot plays this seat right now: bots, players who left, seats the host handed over while
+   * their player is away, and, only if the room allows it, players away for a while or sitting idle.
+   */
   private autopilot(seat: Seat, now: number): boolean {
-    return seat.isBot || seat.left || seat.idle || (!seat.conn && now - seat.disconnectedAt >= AFK_GRACE_MS);
+    if (seat.isBot || seat.left) return true;
+    if (!seat.conn && seat.handedOver) return true;
+    if (!this.settings.autopilot) return false;
+    return seat.idle || (!seat.conn && now - seat.disconnectedAt >= AFK_GRACE_MS);
+  }
+
+  /** Copies who is on autopilot into the game state, for the player cards. True if anything changed. */
+  private syncAutopilot(now: number): boolean {
+    let changed = false;
+    for (const p of this.game?.players ?? []) {
+      const s = this.seats.find((x) => x.id === p.id);
+      if (!s || s.isBot) continue;
+      const on = this.autopilot(s, now);
+      if (!!p.autopilot !== on) {
+        p.autopilot = on;
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   private schedule() {
@@ -373,6 +454,8 @@ export class Room {
     const g = this.game;
     if (!g || g.phase.kind === 'over') return;
     const now = Date.now();
+    if (this.syncAutopilot(now)) this.broadcastGame([]);
+    if (this.paused) return;
     // With nobody watching, the table pauses instead of racing to the end.
     if (!this.seats.some((s) => s.conn && !s.isBot)) return;
 
@@ -386,10 +469,11 @@ export class Room {
       const think = FAST ? 120 : auto.isBot ? 650 + randomInt(650) : 450;
       this.botTimer = setTimeout(() => this.runAutopilot(auto.id), Math.max(0, this.busyUntil - now) + think);
     }
-    // Wake up when an absent player's grace runs out or a present one has been idle too long.
+    // Wake up when an absent player's grace runs out or a present one has been idle too long (only
+    // when the room lets the autopilot stand in; otherwise the game simply waits for them).
     const wake: number[] = [];
     for (const s of seats) {
-      if (this.autopilot(s, now) || s.isBot) continue;
+      if (!this.settings.autopilot || this.autopilot(s, now) || s.isBot) continue;
       if (!s.conn) wake.push(s.disconnectedAt + AFK_GRACE_MS);
       else wake.push((this.waitSince.get(s.id) ?? now) + IDLE_MS);
     }
@@ -402,6 +486,7 @@ export class Room {
   private checkIdle() {
     const g = this.game;
     if (!g) return;
+    if (!this.settings.autopilot || this.paused) return this.schedule();
     const now = Date.now();
     for (const id of waitingOn(g)) {
       const s = this.seats.find((x) => x.id === id);
@@ -421,7 +506,7 @@ export class Room {
     let res = action ? applyAction(g, pid, action) : null;
     if (!res?.ok) {
       console.warn(`[room ${this.code}] autopilot move rejected (${res && !res.ok ? res.error : 'no move'}):`, action);
-      const fallbacks: Action[] = [{ type: 'done' }, { type: 'assist' }, { type: 'excess' }, { type: 'discard' }];
+      const fallbacks: Action[] = [{ type: 'done' }, { type: 'assist' }, { type: 'excess' }, { type: 'discard' }, { type: 'skipDecor' }];
       for (const f of fallbacks) {
         res = applyAction(g, pid, f);
         if (res.ok) break;

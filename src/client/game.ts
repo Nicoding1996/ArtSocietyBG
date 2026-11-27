@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GENRE_INFO } from '../shared/content';
 import { waitingOnView } from '../shared/options';
-import type { GameEvent, GameView, Hung, Painting, PlayerView, Tile } from '../shared/types';
+import type { GameEvent, GameView, Hung, Painting, PlayerView, RoomView, Tile } from '../shared/types';
 import type { Audio } from './audio';
 import type { Net } from './net';
 import { CELL_H } from './three/layout';
@@ -13,8 +13,9 @@ import type { ChatPanel } from './ui/chat';
 import { el, esc, sleep } from './ui/dom';
 import { Hud, endText } from './ui/hud';
 import { icon } from './ui/icons';
-import { banner, hideCards, lightbox, revealCard, showHelp, tileTooltip, toast, tooltip } from './ui/overlays';
+import { banner, closeModal, hideCards, lightbox, modal, recap, revealCard, showHelp, tileTooltip, toast, tooltip } from './ui/overlays';
 import { Prompts } from './ui/prompts';
+import { refreshViewers, showGalleries, showMuseum, viewerOpen } from './ui/viewers';
 
 const CAMERA_KEY = 'artsociety.camera';
 
@@ -40,6 +41,19 @@ export class GameScreen {
   private lastNeed = '';
   private insetSig = '';
   private resizeObs: ResizeObserver;
+  /** Set while the tab is in the background: when it went and the last chronicle line seen before. */
+  private away: { since: number; lastLog: number } | null = null;
+  /** Coming back to a pile of updates: they go straight to the screen instead of playing one by one. */
+  private catchingUp = false;
+  /** The game ended while the tab was hidden; the Gala waits until the player can see it. */
+  private galaWaiting = false;
+  private room: RoomView | null = null;
+  /** The menu (Esc) is open; `pausing` when it paused the game because only bots share the table. */
+  private menu: { pausing: boolean } | null = null;
+  /** This tab paused the game when it went to the background, and resumes it on coming back. */
+  private autoPaused = false;
+  /** The pause state this tab last asked the server for, until a room update confirms it. */
+  private pauseWish: boolean | null = null;
 
   constructor(
     private world: World,
@@ -47,7 +61,7 @@ export class GameScreen {
     private audio: Audio,
     private chat: ChatPanel,
     private me: () => string | null,
-    isHost: () => boolean,
+    private isHost: () => boolean,
     private onLeave: () => void,
   ) {
     this.prompts = new Prompts({
@@ -69,36 +83,28 @@ export class GameScreen {
       },
       lookAtMyWall: () => {
         const me = this.me();
-        if (me && !(this.world.view.kind === 'wall' && this.world.view.pid === me)) void this.world.viewWall(me, true);
+        if (me && !(this.world.view.kind === 'wall' && this.world.view.pid === me)) this.go({ kind: 'wall', pid: me, tight: true });
         this.refreshHud();
       },
+      unfold: () => {
+        const v = this.world.view;
+        if (v.kind !== 'wall') return;
+        this.unfoldedFor = v.pid;
+        this.syncFold(v);
+        this.measureInsets();
+      },
+      museum: (genre) => this.view && showMuseum(this.view, this.me(), genre),
     });
     this.hud = new Hud(
       {
         onHelp: () => showHelp(),
-        onLeave: () => {
-          if (confirm('Leave this game? An autopilot will take over your seat.')) this.onLeave();
-        },
-        onToggle: (what) => {
-          if (what === 'sfx') this.audio.setSfx(!this.audio.sfxOn);
-          if (what === 'music') this.audio.setMusic(!this.audio.musicOn);
-          if (what === 'camera') {
-            this.autoCam = !this.autoCam;
-            localStorage.setItem(CAMERA_KEY, this.autoCam ? 'on' : 'off');
-            this.lastNeed = '';
-            if (this.view) this.camera(this.view);
-          }
-          this.hud.refreshToggles();
-          this.refreshHud();
-        },
-        onView: (what) => {
-          const me = this.me();
-          if (what === 'table') void this.world.viewTable();
-          else if (what === 'mine') {
-            if (me) void this.world.viewWall(me, this.needsMyWall());
-          } else void this.world.viewWall(what.pid, what.pid === me && this.needsMyWall());
-          this.refreshHud();
-        },
+        onLeave: () => this.confirmLeave(),
+        onToggle: (what) => this.toggle(what),
+        onView: (what) => this.look(what),
+        onGalleries: () => this.galleries(),
+        onMuseum: (genre) => this.view && showMuseum(this.view, this.me(), genre),
+        onPause: () => this.openMenu(),
+        onHandOver: (pid) => this.net.send({ t: 'handOver', id: pid }),
         onTile: () => undefined,
         toggles: () => ({ sfx: this.audio.sfxOn, music: this.audio.musicOn, camera: this.autoCam }),
       },
@@ -109,22 +115,183 @@ export class GameScreen {
     this.root.appendChild(this.hud.root);
     this.ceremony.mount(this.root);
     world.onTileHover = (tile, owner, x, y) => tooltip(tile ? tileTooltip(tile, this.player(owner), this.view) : null, x, y);
-    world.onTileClick = (tile, owner) => lightbox(tile, this.player(owner), this.view);
+    world.onTileClick = (tile, owner) => {
+      const v = this.view;
+      // A painting on one of the museum piles opens the whole museum at that type.
+      if (!owner && v && tile.kind === 'painting' && v.museum[tile.genre].some((m) => m.id === tile.id)) showMuseum(v, this.me(), tile.genre);
+      else lightbox(tile, this.player(owner), v);
+    };
     world.onWallClick = (pid) => {
-      void this.world.viewWall(pid, pid === this.me() && this.needsMyWall());
+      this.go({ kind: 'wall', pid, tight: pid === this.me() && this.needsMyWall() });
       this.refreshHud();
     };
     this.resizeObs = new ResizeObserver(() => this.measureInsets());
     this.resizeObs.observe(this.hud.promptSlot);
+    this.resizeObs.observe(this.prompts.root);
     window.addEventListener('resize', this.onResize);
+    window.addEventListener('keydown', this.onKey);
+    document.addEventListener('visibilitychange', this.onVisibility);
+    // The game can start while this tab is in the background.
+    if (document.hidden) this.onVisibility();
   }
 
   private onResize = () => this.measureInsets();
+
+  /**
+   * Esc: the menu (after closing a window or unpinning a spot, which come first). 1-4: a player's wall,
+   * T: the table, M: my wall, G: every wall side by side.
+   */
+  private onKey = (e: KeyboardEvent) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.defaultPrevented) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    const v = this.view;
+    if (!v || v.phase.kind === 'over' || this.ceremony.started || this.menu) return;
+    if (e.key === 'Escape') {
+      this.openMenu();
+      e.preventDefault();
+      return;
+    }
+    const k = e.key.toLowerCase();
+    const n = /^[1-9]$/.test(k) ? Number(k) : 0;
+    if (k === 'g') {
+      if (viewerOpen('galleries')) closeModal();
+      else this.galleries();
+    } else if (k === 't' || k === 'm' || (n && n <= v.players.length)) {
+      closeModal();
+      this.look(k === 't' ? 'table' : k === 'm' ? 'mine' : { pid: v.players[n - 1].id });
+    } else return;
+    e.preventDefault();
+  };
+
+  /** Turns the camera to the table or a wall, as the top bar's buttons, the player cards and the keys ask. */
+  private look(what: 'table' | 'mine' | { pid: string }) {
+    const me = this.me();
+    if (what === 'table') this.go({ kind: 'table' });
+    else if (what === 'mine') {
+      if (me) this.go({ kind: 'wall', pid: me, tight: this.needsMyWall() });
+    } else this.go({ kind: 'wall', pid: what.pid, tight: what.pid === me && this.needsMyWall() });
+    this.refreshHud();
+  }
+
+  private galleries() {
+    if (this.view) showGalleries(this.view, this.me(), (pid) => this.look({ pid }));
+  }
+
+  private confirmLeave() {
+    if (confirm('Leave this game? A bot will take over your seat.')) this.onLeave();
+  }
+
+  private toggle(what: 'sfx' | 'music' | 'camera') {
+    if (what === 'sfx') this.audio.setSfx(!this.audio.sfxOn);
+    if (what === 'music') this.audio.setMusic(!this.audio.musicOn);
+    if (what === 'camera') {
+      this.autoCam = !this.autoCam;
+      localStorage.setItem(CAMERA_KEY, this.autoCam ? 'on' : 'off');
+      this.lastNeed = '';
+      if (this.view) this.camera(this.view);
+    }
+    this.hud.refreshToggles();
+    this.refreshHud();
+  }
+
+  // ---------- the menu and pausing ----------
+
+  /** Only bots (or players who are not connected) share the table, so the game may pause. */
+  private canPause(): boolean {
+    const v = this.view;
+    const me = this.me();
+    if (!v || !me || v.phase.kind === 'over' || !v.players.some((p) => p.id === me)) return false;
+    return v.players.every((p) => p.id === me || p.isBot || !p.connected);
+  }
+
+  private askPause(on: boolean) {
+    this.pauseWish = on;
+    this.net.send({ t: 'pause', on });
+  }
+
+  /** The Esc menu. Alone with bots it pauses the game until it closes; with other players it does not. */
+  private openMenu() {
+    if (!this.view || this.view.phase.kind === 'over' || this.disposed) return;
+    const pausing = this.canPause();
+    if (pausing && !this.room?.paused) this.askPause(true);
+    this.menu = { pausing };
+    tooltip(null);
+    const me = this.me();
+    const onlyBots = this.view.players.every((p) => p.id === me || p.isBot);
+    const box = el('div', 'game-menu');
+    const draw = () => {
+      box.innerHTML = `
+        <h2>${icon(pausing ? 'pause' : 'menu')} ${pausing ? 'Paused' : 'Menu'}</h2>
+        <p class="lead">${
+          pausing
+            ? onlyBots
+              ? 'The bots wait until you resume.'
+              : 'Nobody else is at the table right now, so the game waits until you resume.'
+            : 'Other collectors are at the table, so the game goes on while this menu is open.'
+        }</p>
+        <div class="gm-actions">
+          <button class="btn primary gm-resume">${icon('play')} ${pausing ? 'Resume' : 'Back to the game'}</button>
+          <button class="btn ghost gm-help">${icon('help')} How to play</button>
+          <div class="gm-row">
+            <button class="btn ghost gm-sfx">${icon(this.audio.sfxOn ? 'sound' : 'mute')} Sound ${this.audio.sfxOn ? 'on' : 'off'}</button>
+            <button class="btn ghost gm-music">${icon('music')} Music ${this.audio.musicOn ? 'on' : 'off'}</button>
+          </div>
+          <button class="btn ghost gm-leave">${icon('flag')} Leave the game</button>
+        </div>
+        <p class="gm-foot">Esc ${pausing ? 'resumes' : 'closes this menu'}.</p>`;
+      box.querySelector('.gm-resume')!.addEventListener('click', () => closeModal());
+      // The rules open over the menu, and the menu comes back when they close.
+      box.querySelector('.gm-help')!.addEventListener('click', () => showHelp(() => this.openMenu()));
+      box.querySelector('.gm-sfx')!.addEventListener('click', () => {
+        this.toggle('sfx');
+        draw();
+      });
+      box.querySelector('.gm-music')!.addEventListener('click', () => {
+        this.toggle('music');
+        draw();
+      });
+      box.querySelector('.gm-leave')!.addEventListener('click', () => this.confirmLeave());
+    };
+    draw();
+    modal(box, 'menu-back', () => this.menuClosed());
+    box.querySelector<HTMLElement>('.gm-resume')?.focus();
+  }
+
+  private menuClosed() {
+    const m = this.menu;
+    this.menu = null;
+    if (m?.pausing && !this.disposed) this.askPause(false);
+  }
+
+  /** The room changed: a pause began or ended (perhaps from another tab, or because someone came back). */
+  roomChanged(room: RoomView) {
+    this.room = room;
+    // The host may have changed, which decides who can hand a seat to a bot.
+    this.refreshHud();
+    if (this.pauseWish !== null) {
+      // Updates sent before the server saw this tab's last request are out of date.
+      if (room.paused !== this.pauseWish) return;
+      this.pauseWish = null;
+      return;
+    }
+    if (room.paused && !this.menu && !this.autoPaused && !document.hidden) this.openMenu();
+    else if (!room.paused && this.menu?.pausing) {
+      this.menu = null;
+      closeModal();
+      toast('Someone is back at the table, so the game goes on.');
+    }
+  }
 
   dispose() {
     this.disposed = true;
     this.resizeObs.disconnect();
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('keydown', this.onKey);
+    document.removeEventListener('visibilitychange', this.onVisibility);
+    this.world.tw.setInstant(false);
+    recap(null);
+    if (viewerOpen('galleries') || viewerOpen('museum')) closeModal();
     this.prompts.hide();
     this.ceremony.close();
     hideCards();
@@ -141,6 +308,8 @@ export class GameScreen {
   }
 
   rejected(message: string) {
+    // A refused pause leaves the room as it was.
+    this.pauseWish = null;
     toast(message, 'error');
     this.audio.error();
     this.prompts.unlock();
@@ -159,12 +328,15 @@ export class GameScreen {
     this.busy = true;
     while (this.queue.length && !this.disposed) {
       const u = this.queue.shift()!;
-      // Catch up quickly if updates pile up (for example after the tab was in the background).
+      // A hidden tab draws nothing, so its updates go straight to the screen; so does the backlog found
+      // on coming back (see onVisibility). Otherwise a short backlog plays a little faster to keep up.
+      const skip = document.hidden || this.catchingUp;
       const backlog = this.queue.length;
-      this.world.tw.speed = backlog > 3 ? 8 : backlog > 0 ? 2.5 : 1;
-      if ((this.view || u.events.some((e) => e.t === 'start')) && u.events.length) {
+      this.world.tw.speed = skip ? 40 : backlog > 3 ? 8 : backlog > 0 ? 2.5 : 1;
+      if (!skip && (this.view || u.events.some((e) => e.t === 'start')) && u.events.length) {
         for (const e of u.events) {
           if (this.disposed) return;
+          if (this.catchingUp) break;
           try {
             await this.play(e, u.view);
           } catch (err) {
@@ -176,6 +348,54 @@ export class GameScreen {
     }
     this.world.tw.speed = 1;
     this.busy = false;
+    if (this.catchingUp) {
+      this.catchingUp = false;
+      if (!document.hidden) this.welcomeBack();
+    }
+  }
+
+  private onVisibility = () => {
+    if (document.hidden) {
+      this.away ??= { since: performance.now(), lastLog: this.view?.log.at(-1)?.id ?? 0 };
+      // A hidden tab gets no frames, so the animation in flight would freeze and hold up every update
+      // behind it: finish it now and keep the table current while away.
+      this.world.tw.setInstant(true);
+      if (this.busy) this.catchingUp = true;
+      // Alone with bots: they wait while this tab is in the background.
+      if (!this.menu && !this.room?.paused && this.canPause()) {
+        this.autoPaused = true;
+        this.askPause(true);
+      }
+      return;
+    }
+    this.world.tw.setInstant(false);
+    if (this.autoPaused) {
+      this.autoPaused = false;
+      if (!this.menu) this.askPause(false);
+    }
+    if (this.galaWaiting && this.view) {
+      this.galaWaiting = false;
+      void this.ceremony.play(this.view, this.me());
+    }
+    if (!this.away) return;
+    if (this.busy) {
+      // Still on the last animation (its timers run slowly in a background tab): finish it, skip the rest.
+      this.catchingUp = true;
+      this.world.tw.speed = 40;
+      this.world.tw.flush();
+    } else this.welcomeBack();
+  };
+
+  /** Back in the tab: what happened meanwhile, from the chronicle, in one card. */
+  private welcomeBack() {
+    const away = this.away;
+    this.away = null;
+    const v = this.view;
+    if (!away || !v || v.phase.kind === 'over' || performance.now() - away.since < 3000) return;
+    const missed = v.log.filter((l) => l.id > away.lastLog);
+    if (!missed.length) return;
+    const colors = new Map(v.players.map((p) => [p.id, p.color]));
+    recap(missed.map((l) => ({ text: l.text, kind: l.kind, color: l.pid ? colors.get(l.pid) : undefined })));
   }
 
   private wait(ms: number) {
@@ -353,6 +573,25 @@ export class GameScreen {
         await this.wait(250);
         break;
       }
+      case 'swapDecor': {
+        const wall = w.walls.get(e.pid);
+        const s = this.shownOf(e.pid);
+        if (!wall) break;
+        // The short tiles glow, then make way for the long one that covers the same spaces.
+        const gone = new Set(e.removed.map((d) => d.id));
+        wall.flash([...gone], '#ffd76a', 0.9);
+        this.audio.paper();
+        await this.wait(550);
+        s.wall = [...s.wall.filter((h) => !gone.has(h.tile.id)), { tile: e.tile, x: e.x, y: e.y }];
+        wall.syncWall(s.wall);
+        wall.flash([e.tile.id], '#ffd76a');
+        const at = wall.cellWorld(e.x, e.y, e.tile.w, e.tile.h);
+        w.burst(at, '#ffe7a8', 24, 0.6, 0.12, 0.9);
+        this.audio.sparkle();
+        w.floatAt(at.clone().setY(at.y + e.tile.h * CELL_H * 0.5), `${icon('swap')} Decor swapped`, 'gain');
+        await this.wait(400);
+        break;
+      }
       case 'discard': {
         const wall = w.walls.get(e.pid);
         const s = this.shownOf(e.pid);
@@ -405,7 +644,7 @@ export class GameScreen {
   private goTable(ms: number) {
     if (!this.autoCam || this.world.userBusy() || this.needsMyWall()) return;
     this.lastNeed = 'table';
-    void this.world.viewTable(ms);
+    this.go({ kind: 'table' }, ms);
   }
 
   private camera(v: GameView) {
@@ -415,8 +654,33 @@ export class GameScreen {
     if (need === this.lastNeed) return;
     if (this.world.userBusy()) return;
     this.lastNeed = need;
-    if (need === 'table') void this.world.viewTable();
-    else if (me) void this.world.viewWall(me, true);
+    if (need === 'table') this.go({ kind: 'table' });
+    else if (me) this.go({ kind: 'wall', pid: me, tight: true });
+  }
+
+  /**
+   * Turns the camera to the table or a wall. The bottom panel folds first when a wall is coming, so the
+   * camera frames the wall in the space that is really free.
+   */
+  private go(view: { kind: 'table' } | { kind: 'wall'; pid: string; tight: boolean }, ms?: number) {
+    if (view.kind !== 'wall' || view.pid !== this.unfoldedFor) this.unfoldedFor = '';
+    this.syncFold(view);
+    this.measureInsets(false);
+    if (view.kind === 'table') void this.world.viewTable(ms);
+    else void this.world.viewWall(view.pid, view.tight, ms);
+  }
+
+  /** The wall the player opened the folded panel on (it folds again for any other view). */
+  private unfoldedFor = '';
+
+  /**
+   * While a wall is on screen the bottom panel (bids, the auction) shrinks to one line. `render` false
+   * only records the state, for callers that render the panel straight after.
+   */
+  private syncFold(view: { kind: string; pid?: string }, render = true) {
+    const fold = !this.hud.isDocked && view.kind === 'wall' && view.pid !== this.unfoldedFor;
+    if (render) this.prompts.setFolded(fold);
+    else this.prompts.folded = fold;
   }
 
   private viewName(): string {
@@ -425,10 +689,11 @@ export class GameScreen {
   }
 
   private refreshHud() {
-    if (this.view) this.hud.render(this.view, this.me(), this.viewName());
+    if (this.view) this.hud.render(this.view, this.me(), this.viewName(), { host: this.isHost(), canPause: this.canPause() });
   }
 
-  private measureInsets() {
+  /** Reads how much of the screen the HUD covers; `refresh` re-frames the current view if that changed. */
+  private measureInsets(refresh = true) {
     const top = this.hud.root.querySelector('.topbar')?.getBoundingClientRect();
     const left = this.hud.root.querySelector('.players')?.getBoundingClientRect();
     const right = this.hud.root.querySelector('.side')?.getBoundingClientRect();
@@ -444,7 +709,7 @@ export class GameScreen {
     const first = !this.insetSig;
     this.insetSig = sig;
     this.world.insets = ins;
-    if (!first && !this.world.userBusy() && this.world.view.kind !== 'free') this.world.refreshView(450);
+    if (refresh && !first && !this.world.userBusy() && this.world.view.kind !== 'free') this.world.refreshView(450);
   }
 
   private apply(v: GameView) {
@@ -474,12 +739,19 @@ export class GameScreen {
     w.setActive(waitingOnView(v));
     this.chat.setColors(Object.fromEntries(v.players.map((p) => [p.id, p.color])));
     this.chat.setLog(v.log);
-    this.hud.render(v, me, this.viewName());
+    this.hud.render(v, me, this.viewName(), { host: this.isHost(), canPause: this.canPause() });
     this.hud.setDocked(this.needsMyWall());
+    this.syncFold(this.world.view, false);
     this.prompts.render(v, me);
     this.measureInsets();
     this.camera(v);
     this.refreshHud();
-    if (v.phase.kind === 'over' && !this.ceremony.started) void this.ceremony.play(v, me);
+    // The Gala takes the whole screen; the galleries and museum windows make way for it.
+    if (v.phase.kind === 'over' && (viewerOpen('galleries') || viewerOpen('museum'))) closeModal();
+    else refreshViewers(v, me);
+    if (v.phase.kind === 'over' && !this.ceremony.started && !this.galaWaiting) {
+      if (document.hidden) this.galaWaiting = true;
+      else void this.ceremony.play(v, me);
+    }
   }
 }

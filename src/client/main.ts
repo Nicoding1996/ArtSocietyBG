@@ -6,9 +6,12 @@ import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
 import './styles.css';
 import './game.css';
+import { installFrameArt } from './ui/frameArt';
 
 const params = new URLSearchParams(location.search);
 const ui = document.getElementById('ui')!;
+// The Pearl and Gilded ornament the stylesheet draws round small pictures of paintings.
+installFrameArt();
 
 if (params.has('gallery')) {
   // A wall of sample paintings in every shape, handy for tuning the art generators.

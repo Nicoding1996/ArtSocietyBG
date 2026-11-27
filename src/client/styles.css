@@ -716,16 +716,18 @@ input:focus {
 
 .reactions {
   display: flex;
-  gap: 2px;
   justify-content: space-between;
 }
 
+/* The buttons share the row evenly, so all of them stay visible in a narrow side column. */
 .react {
+  flex: 1 1 0;
+  min-width: 0;
   background: none;
   border: none;
   font-size: 17px;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 2px 0;
   border-radius: 6px;
   transition: transform 0.12s ease;
 }
@@ -747,6 +749,55 @@ input:focus {
   font-size: 13px;
 }
 
+.version-warning {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: max-content;
+  max-width: min(640px, calc(100vw - 24px));
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 10px 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #c2603d;
+  background: rgba(58, 20, 12, 0.95);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  color: #ffe3cf;
+  font-size: 13.5px;
+  line-height: 1.45;
+  pointer-events: auto;
+}
+.version-warning b {
+  color: #fff;
+}
+.version-warning code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.version-warning .vw-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.version-warning .vw-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.version-warning .vw-close svg {
+  width: 16px;
+  height: 16px;
+}
 .net-status {
   position: fixed;
   left: 50%;

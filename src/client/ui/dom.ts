@@ -23,6 +23,9 @@ export function renderIf(target: HTMLElement, sig: string, render: () => void) {
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** 1st, 2nd, 3rd, 4th... (the game seats at most a handful of players). */
+export const ordinal = (n: number) => `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
+
 export async function copyText(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard && window.isSecureContext) {

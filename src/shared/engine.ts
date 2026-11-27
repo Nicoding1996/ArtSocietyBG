@@ -1,4 +1,4 @@
-import { DECOR_INFO, GENRE_INFO, RULES, buildPaintings, emptyDecorSupply, makeDecor, parseSize, sizeKey } from './content';
+import { DECOR_INFO, GENRE_INFO, RULES, buildPaintings, decorList, emptyDecorSupply, makeDecor, parseSize, sizeKey } from './content';
 import { nextRandom, shuffle } from './rng';
 import { computeResults } from './scoring';
 import {
@@ -200,6 +200,8 @@ function act(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): string |
     case 'exchange':
     case 'excess':
     case 'decor':
+    case 'swapDecor':
+    case 'skipDecor':
     case 'discard':
     case 'done': {
       if (ph.kind !== 'acquire' || !p.task) return 'You have nothing to hang right now.';
@@ -252,7 +254,7 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
         log(g, 'hang', `${p.name} hangs ${describe(tile)}.`, p.id);
         if (faux.length) log(g, 'warn', `Faux pas! ${p.name}'s ${GENRE_INFO[tile.genre].name.toLowerCase()} touches another of its type: they will not score.`, p.id);
         if (matches.length) {
-          t.rewards.push(matches.length);
+          t.rewards.push({ points: matches.length, from: 'frames' });
           log(g, 'decor', `${p.name} matched ${matches.length} frame${matches.length === 1 ? '' : 's'} and earns decor worth up to ${matches.length}.`, p.id);
         }
       } else log(g, 'decor', `${p.name} hangs a ${DECOR_INFO[tile.shape].name.toLowerCase()} (+${tile.points}).`, p.id);
@@ -299,13 +301,18 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       if (g.decor['1x1'] > 0) {
         g.decor['1x1']--;
         t.queue.unshift({ tile: makeDecor('1x1', `d${++g.decorSeq}`), from: 'excess' });
+      } else {
+        // The supply has no 1-point decor left. The player may free one up by swapping decor on their
+        // wall (see decorSwaps); with nothing to swap, advance() drops it.
+        t.rewards.push({ points: 1, from: 'excess' });
       }
       if (p.excess.length >= RULES.excessLimit && !g.end) trigger(g, ev, 'excess', p);
       return null;
     }
     case 'decor': {
-      const k = t.rewards[0];
-      if (k === undefined) return 'You have not earned any decor.';
+      const reward = t.rewards[0];
+      if (!reward) return 'You have not earned any decor.';
+      const k = reward.points;
       if (!Array.isArray(a.shapes) || !a.shapes.length || a.shapes.length > k) return 'Choose your decor.';
       const counts = new Map<DecorShape, number>();
       let total = 0;
@@ -322,9 +329,35 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
         return makeDecor(s, `d${++g.decorSeq}`);
       });
       t.rewards.shift();
-      t.queue.unshift(...tiles.map((tile) => ({ tile, from: 'reward' as const })));
+      const from: IncomingFrom = reward.from === 'excess' ? 'excess' : 'reward';
+      t.queue.unshift(...tiles.map((tile) => ({ tile, from })));
       ev.push({ t: 'decor', pid: p.id, tiles, reward: k });
       log(g, 'decor', `${p.name} takes ${tiles.map((d) => `a ${DECOR_INFO[d.shape].name.toLowerCase()}`).join(' and ')}.`, p.id);
+      return null;
+    }
+    case 'swapDecor': {
+      if (!t.rewards.length) return 'Decor can only be swapped while you choose a decor tile.';
+      if (!DECOR_SHAPES.some((s) => g.decor[s] === 0)) return 'Decor can only be swapped once the supply has run out of a size.';
+      if (!(DECOR_SHAPES as readonly string[]).includes(a.shape)) return 'Unknown decor.';
+      if (g.decor[a.shape] <= 0) return `No ${DECOR_INFO[a.shape].name.toLowerCase()} left in the supply.`;
+      const sw = decorSwaps(g, p).find((s) => s.shape === a.shape && s.x === a.x && s.y === a.y);
+      if (!sw) return 'A swap must exactly replace 2 or 3 decor tiles on your wall, at least one of a size that has run out.';
+      const gone = new Set(sw.removed.map((d) => d.id));
+      p.wall = p.wall.filter((h) => !gone.has(h.tile.id));
+      for (const d of sw.removed) g.decor[d.shape]++;
+      g.decor[sw.shape]--;
+      const tile = makeDecor(sw.shape, `d${++g.decorSeq}`);
+      p.wall.push({ tile, x: sw.x, y: sw.y });
+      ev.push({ t: 'swapDecor', pid: p.id, removed: sw.removed, tile, x: sw.x, y: sw.y });
+      log(g, 'decor', `${p.name} swaps ${decorList(sw.removed)} on their wall for a ${DECOR_INFO[sw.shape].name.toLowerCase()}, which puts them back in the supply.`, p.id);
+      return null;
+    }
+    case 'skipDecor': {
+      const reward = t.rewards[0];
+      if (!reward) return 'You have not earned any decor.';
+      if (DECOR_SHAPES.some((s) => g.decor[s] > 0 && DECOR_INFO[s].points <= reward.points)) return 'The supply still has decor of that value: take one.';
+      t.rewards.shift();
+      log(g, 'decor', `${p.name} goes without the decor.`, p.id);
       return null;
     }
     case 'discard': {
@@ -356,6 +389,63 @@ export function exchangeOptions(g: Pick<GameState, 'museum'>, p: Pick<PlayerStat
   return g.museum[head.tile.genre].filter((m) => fits(grid, m.w, m.h));
 }
 
+export interface DecorSwap {
+  /** The longer tile taken from the supply and hung at (x, y) in place of `removed`. */
+  shape: DecorShape;
+  x: number;
+  y: number;
+  /** The decor on the wall that goes back to the supply. */
+  removed: Decor[];
+  /** Sizes among `removed` that the supply had run out of. */
+  frees: DecorShape[];
+}
+
+const SWAP_TARGETS: readonly DecorShape[] = ['2x1', '1x2', '3x1', '1x3'];
+
+/**
+ * Once the supply has run out of a decor size, a player may swap 2 or 3 decor tiles in a line on their
+ * wall for one longer tile covering exactly the same spaces. The shorter tiles go back to the supply,
+ * so the size that ran out can be taken again. Points do not change: decor scores its area.
+ */
+export function decorSwaps(g: Pick<GameState, 'decor'>, p: Pick<PlayerState, 'wall'>): DecorSwap[] {
+  if (!DECOR_SHAPES.some((s) => g.decor[s] === 0)) return [];
+  const grid = gridOf(p.wall);
+  const out: DecorSwap[] = [];
+  for (const shape of SWAP_TARGETS) {
+    if (g.decor[shape] <= 0) continue;
+    const { w, h } = DECOR_INFO[shape];
+    for (let y = 0; y + h <= RULES.wallH; y++) {
+      for (let x = 0; x + w <= RULES.wallW; x++) {
+        // Every space must hold decor, and every tile involved must lie inside the rectangle.
+        const covering = new Set<number>();
+        let ok = true;
+        for (let yy = y; yy < y + h && ok; yy++) {
+          for (let xx = x; xx < x + w && ok; xx++) {
+            const i = grid[yy * RULES.wallW + xx];
+            if (i < 0 || p.wall[i].tile.kind !== 'decor') ok = false;
+            else covering.add(i);
+          }
+        }
+        if (!ok || covering.size < 2) continue;
+        const removed: Decor[] = [];
+        for (const i of covering) {
+          const hung = p.wall[i];
+          const tile = hung.tile;
+          if (tile.kind !== 'decor' || hung.x < x || hung.y < y || hung.x + tile.w > x + w || hung.y + tile.h > y + h) {
+            ok = false;
+            break;
+          }
+          removed.push(tile);
+        }
+        if (!ok) continue;
+        const frees = [...new Set(removed.map((d) => d.shape))].filter((s) => g.decor[s] === 0);
+        if (frees.length) out.push({ shape, x, y, removed, frees });
+      }
+    }
+  }
+  return out;
+}
+
 function finishTask(p: PlayerState, ev: GameEvent[]) {
   p.task = null;
   ev.push({ t: 'done', pid: p.id });
@@ -379,10 +469,13 @@ function advance(g: GameState, p: PlayerState, ev: GameEvent[]) {
       return;
     }
     if (t.rewards.length) {
-      const k = t.rewards[0];
+      const r = t.rewards[0];
+      const k = r.points;
       if (!DECOR_SHAPES.some((s) => g.decor[s] > 0 && DECOR_INFO[s].points <= k)) {
+        // A swap on the wall could put a tile of that value back in the supply: the player decides.
+        if (decorSwaps(g, p).some((sw) => sw.frees.some((s) => DECOR_INFO[s].points <= k))) return;
         t.rewards.shift();
-        log(g, 'decor', 'The decor supply has nothing left of that value.', p.id);
+        log(g, 'decor', r.from === 'excess' ? `No 1-point decor is left in the supply, so ${p.name} gets none for the excess painting.` : 'The decor supply has nothing left of that value.', p.id);
         continue;
       }
       return;

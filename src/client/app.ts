@@ -10,6 +10,7 @@ import { World } from './three/world';
 import { ChatPanel } from './ui/chat';
 import { el } from './ui/dom';
 import { renderHome } from './ui/home';
+import { icon } from './ui/icons';
 import { LobbyView } from './ui/lobby';
 import { closeModal, initOverlays, showHelp, toast } from './ui/overlays';
 
@@ -67,6 +68,20 @@ export class App {
     this.net.connect();
   }
 
+  private versionWarning() {
+    if (document.querySelector('.version-warning')) return;
+    const box = el(
+      'div',
+      'version-warning',
+      `<span><b>The game server is running a different version of the game than this page.</b> Parts of the game will not work properly. On the PC that runs the server, stop it and run <code>npm start</code> again, then reload this page.</span>`,
+    );
+    const close = el('button', 'vw-close', icon('close'));
+    close.title = 'Hide this message';
+    close.addEventListener('click', () => box.remove());
+    box.appendChild(close);
+    this.status.after(box);
+  }
+
   /** Shows the bots' half-finished salon behind the home and lobby screens. */
   private showDemo() {
     void this.world.ready.then(() => {
@@ -98,6 +113,9 @@ export class App {
     switch (m.t) {
       case 'welcome':
         this.lan = m.lan ?? [];
+        // A server left running on older code than this page (or newer) misreads parts of the game,
+        // so say so plainly. In development the server restarts on every change, so no check there.
+        if (!import.meta.env.DEV && m.build !== __SHARED_HASH__) this.versionWarning();
         break;
       case 'room': {
         this.room = m.room;
@@ -106,10 +124,14 @@ export class App {
         history.replaceState(null, '', `?room=${m.room.code}`);
         if (m.room.status === 'lobby') this.showLobby();
         else if (this.screen !== 'game') this.showGame();
+        this.game?.roomChanged(m.room);
         break;
       }
       case 'game':
-        if (this.screen !== 'game') this.showGame();
+        if (this.screen !== 'game') {
+          this.showGame();
+          if (this.room) this.game!.roomChanged(this.room);
+        }
         this.game!.receive(m.view, m.events);
         break;
       case 'chat':

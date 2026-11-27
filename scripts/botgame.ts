@@ -5,8 +5,11 @@ import { PLAYER_COLORS, RULES } from '../src/shared/content';
 import { GENRES, type GameEvent, type GameState } from '../src/shared/types';
 import { gridOf, neighbours, WALL_H, WALL_W } from '../src/shared/wall';
 
-/** Checks the invariants that must hold after every action. Throws with a description if one breaks. */
-export function checkInvariants(s: GameState) {
+/**
+ * Checks the invariants that must hold after every action. Throws with a description if one breaks.
+ * `decorTotal` is the number of decor tiles in the game (108 unless a test shrank the supply).
+ */
+export function checkInvariants(s: GameState, decorTotal = 108) {
   let paintings = s.supply.length + s.lots.length;
   let decor = Object.values(s.decor).reduce((a, b) => a + b, 0);
   for (const g of GENRES) paintings += s.museum[g].length;
@@ -36,7 +39,7 @@ export function checkInvariants(s: GameState) {
     if (new Set([...p.hand, ...p.stack.slice(1)]).size !== RULES.cards) throw new Error(`${p.id}: duplicated bid card`);
   }
   if (paintings !== 112 + s.players.length) throw new Error(`painting count is ${paintings}`);
-  if (decor !== 108) throw new Error(`decor count is ${decor}`);
+  if (decor !== decorTotal) throw new Error(`decor count is ${decor}, expected ${decorTotal}`);
   const ups = GENRES.map((g) => s.prestige[g]).filter((v) => v > 0);
   if (new Set(ups).size !== ups.length) throw new Error(`prestige markers share a space: ${JSON.stringify(s.prestige)}`);
 }
@@ -48,7 +51,7 @@ export function checkInvariants(s: GameState) {
 export function playBotGame(
   seed: number,
   players: number,
-  opts: { check?: boolean; onEvents?: (events: GameEvent[], s: GameState) => void } = {},
+  opts: { check?: boolean; onEvents?: (events: GameEvent[], s: GameState) => void; prepare?: (s: GameState) => void } = {},
 ): { s: GameState; actions: number } {
   const { state: s, events } = createGame({
     seed,
@@ -60,6 +63,8 @@ export function playBotGame(
       isBot: true,
     })),
   });
+  opts.prepare?.(s);
+  const decorTotal = Object.values(s.decor).reduce((a, b) => a + b, 0);
   opts.onEvents?.(events, s);
   const r = makeRng(seed ^ 0x9e3779b9);
   let actions = 0;
@@ -72,7 +77,7 @@ export function playBotGame(
     const res = applyAction(s, pid, a);
     if (!res.ok) throw new Error(`Bot ${pid} made an illegal move ${JSON.stringify(a)}: ${res.error}`);
     opts.onEvents?.(res.events, s);
-    if (opts.check) checkInvariants(s);
+    if (opts.check) checkInvariants(s, decorTotal);
     if (++actions > 5000) throw new Error('Game did not finish');
   }
   return { s, actions };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advancePrestige, applyAction, createGame, viewFor, waitingOn } from '../src/shared/engine';
+import { botDecide } from '../src/shared/bot';
 import { DECOR_INFO, PAINTING_SIZES, RULES, buildPaintings, makeDecor, sizeKey } from '../src/shared/content';
 import { computeResults, ranking, scoreWall } from '../src/shared/scoring';
 import { taskOptions } from '../src/shared/options';
@@ -244,7 +245,7 @@ describe('hanging tiles', () => {
     const ev = act(g, p.id, { type: 'hang', which: 'new', x: 2, y: 0 });
     const hang = ev.find((e) => e.t === 'hang');
     expect(hang && hang.t === 'hang' && hang.matches.sort()).toEqual([left.id, right.id].sort());
-    expect(p.task?.rewards).toEqual([2]);
+    expect(p.task?.rewards).toEqual([{ points: 2, from: 'frames' }]);
     const opts = taskOptions(g, p)!;
     expect(opts.stage).toBe('decor');
     expect(opts.decorShapes.sort()).toEqual(['1x1', '1x2', '2x1'].sort());
@@ -272,7 +273,7 @@ describe('hanging tiles', () => {
     ];
     giveTask(g, p, art('landscape', 'ivory', 2, 2));
     act(g, p.id, { type: 'hang', which: 'new', x: 3, y: 2 });
-    expect(p.task?.rewards).toEqual([4]);
+    expect(p.task?.rewards).toEqual([{ points: 4, from: 'frames' }]);
     expect(reject(g, p.id, { type: 'decor', shapes: ['3x1', '1x2'] })).toMatch(/at most 4/);
     act(g, p.id, { type: 'decor', shapes: ['3x1', '1x1'] });
     expect(p.task?.queue.map((q) => (q.tile.kind === 'decor' ? q.tile.shape : ''))).toEqual(['3x1', '1x1']);
@@ -436,12 +437,129 @@ describe('running out of space', () => {
     p.assistant = art('city', 'walnut', 4, 4);
     const before = g.decor['3x1'];
     giveTask(g, p, art('city', 'gilded', 1, 1 + 1));
-    p.task = { queue: [], rewards: [3] };
+    p.task = { queue: [], rewards: [{ points: 3, from: 'frames' }] };
     // The shelf cannot be hung and the assistant cannot make room, so it goes straight back.
     const ev = act(g, p.id, { type: 'decor', shapes: ['3x1'] });
     expect(ev.some((e) => e.t === 'discard')).toBe(true);
     expect(g.decor['3x1']).toBe(before);
     expect(p.task).toBeNull();
+  });
+});
+
+describe('swapping decor when a size runs out', () => {
+  /** Everything but the starter (4..5, 4..6) and a 1x2 gap at (6, 4..5) is candle sconces, and none are left in the supply. */
+  function soldOut() {
+    const g = newGame(2);
+    hangStarters(g);
+    const p = g.players[0];
+    p.wall = [p.wall[0]];
+    for (let y = 0; y < 14; y++) {
+      for (let x = 0; x < 10; x++) {
+        const inStarter = x >= 4 && x <= 5 && y >= 4 && y <= 6;
+        const gap = x === 6 && (y === 4 || y === 5);
+        if (!inStarter && !gap) p.wall.push({ tile: makeDecor('1x1', `f${x}-${y}`), x, y });
+      }
+    }
+    g.decor['1x1'] = 0;
+    return { g, p };
+  }
+  const decorPoints = (p: PlayerState) => p.wall.reduce((s, h) => s + (h.tile.kind === 'decor' ? h.tile.points : 0), 0);
+  const at = (p: PlayerState, x: number, y: number) => p.wall.find((h) => x >= h.x && x < h.x + h.tile.w && y >= h.y && y < h.y + h.tile.h)?.tile;
+  /** Stores a painting as excess while the 1-point decor is sold out. */
+  function excessWithoutSconces() {
+    const { g, p } = soldOut();
+    p.assistant = art('city', 'walnut', 4, 4); // cannot be hung, so the new painting has to become excess
+    giveTask(g, p, art('landscape', 'gilded', 3, 3));
+    act(g, p.id, { type: 'excess' });
+    return { g, p };
+  }
+
+  it('with no 1-point decor left, an excess painting lets the player swap decor to free one up', () => {
+    const { g, p } = excessWithoutSconces();
+    const opts = taskOptions(g, p)!;
+    expect(opts).toMatchObject({ stage: 'decor', rewardFrom: 'excess', reward: 1, decorShapes: [], canSkipDecor: true });
+    // The best swap frees three sconces at once.
+    const best = opts.swaps[0];
+    expect(best.removed.map((d) => d.shape)).toEqual(['1x1', '1x1', '1x1']);
+    expect(['3x1', '1x3']).toContain(best.shape);
+    expect(reject(g, p.id, { type: 'decor', shapes: ['1x1'] })).toMatch(/No candle sconce left/);
+    const points = decorPoints(p);
+    const longLeft = g.decor[best.shape];
+    const ev = act(g, p.id, { type: 'swapDecor', shape: best.shape, x: best.x, y: best.y });
+    expect(ev.find((e) => e.t === 'swapDecor')).toMatchObject({ removed: best.removed, x: best.x, y: best.y });
+    expect(g.decor['1x1']).toBe(3);
+    expect(g.decor[best.shape]).toBe(longLeft - 1);
+    expect(decorPoints(p)).toBe(points);
+    // The long tile covers exactly the spaces the short ones did.
+    const long = at(p, best.x, best.y);
+    expect(long).toMatchObject({ kind: 'decor', shape: best.shape });
+    for (let i = 0; i < 3; i++) expect(at(p, best.x + (best.shape === '3x1' ? i : 0), best.y + (best.shape === '1x3' ? i : 0))).toBe(long);
+    // Now the 1-point tile can be taken and hung as usual.
+    act(g, p.id, { type: 'decor', shapes: ['1x1'] });
+    expect(g.decor['1x1']).toBe(2);
+    expect(p.task?.queue[0]).toMatchObject({ from: 'excess', tile: { shape: '1x1' } });
+    act(g, p.id, { type: 'hang', which: 'new', x: 6, y: 4 });
+    expect(decorPoints(p)).toBe(points + 1);
+  });
+
+  it('a swap is only possible once a size has run out', () => {
+    const { g, p } = soldOut();
+    g.decor['1x1'] = 5;
+    giveTask(g, p, art('city', 'gilded', 1, 2));
+    p.task = { queue: [], rewards: [{ points: 2, from: 'frames' }] };
+    expect(taskOptions(g, p)!.swaps).toEqual([]);
+    expect(reject(g, p.id, { type: 'swapDecor', shape: '3x1', x: 0, y: 0 })).toMatch(/run out/);
+    expect(reject(g, p.id, { type: 'skipDecor' })).toMatch(/still has decor/);
+  });
+
+  it('a swap replaces whole decor tiles only: no paintings, gaps or tiles sticking out', () => {
+    const { g, p } = soldOut();
+    giveTask(g, p, art('city', 'gilded', 1, 2));
+    p.task = { queue: [], rewards: [{ points: 1, from: 'frames' }] };
+    // A pair of cameos and a sconce along the top-left instead of three sconces.
+    p.wall = p.wall.filter((h) => !(h.y === 0 && h.x <= 2));
+    p.wall.push({ tile: makeDecor('2x1', 'pair'), x: 0, y: 0 }, { tile: makeDecor('1x1', 'one'), x: 2, y: 0 });
+    expect(reject(g, p.id, { type: 'swapDecor', shape: '3x1', x: 3, y: 4 })).toMatch(/exactly replace/); // covers the starting painting
+    expect(reject(g, p.id, { type: 'swapDecor', shape: '1x3', x: 6, y: 3 })).toMatch(/exactly replace/); // covers the empty gap
+    expect(reject(g, p.id, { type: 'swapDecor', shape: '2x1', x: 1, y: 0 })).toMatch(/exactly replace/); // the pair sticks out
+    expect(reject(g, p.id, { type: 'swapDecor', shape: '2x1', x: 0, y: 0 })).toMatch(/exactly replace/); // only one tile
+    // The pair and the sconce in a row become one curio shelf.
+    const pairs = g.decor['2x1'];
+    act(g, p.id, { type: 'swapDecor', shape: '3x1', x: 0, y: 0 });
+    expect(at(p, 0, 0)).toMatchObject({ shape: '3x1' });
+    expect(at(p, 2, 0)).toBe(at(p, 0, 0));
+    expect(g.decor['1x1']).toBe(1);
+    expect(g.decor['2x1']).toBe(pairs + 1);
+  });
+
+  it('with nothing to swap, the excess painting gets no decor', () => {
+    const { g, p } = soldOut();
+    // Paintings instead of sconces: nothing on the wall can be swapped.
+    p.wall = p.wall.map((h) => (h.tile.kind === 'decor' ? { ...h, tile: art('portrait', 'silver', 1, 1) } : h));
+    p.assistant = art('city', 'walnut', 4, 4);
+    giveTask(g, p, art('landscape', 'gilded', 3, 3));
+    act(g, p.id, { type: 'excess' });
+    expect(p.task).toBeNull();
+    expect(p.excess).toHaveLength(1);
+    expect(g.decor['1x1']).toBe(0);
+    expect(g.log.some((l) => l.text.includes('gets none for the excess painting'))).toBe(true);
+  });
+
+  it('a player may go without instead of swapping', () => {
+    const { g, p } = excessWithoutSconces();
+    const tiles = p.wall.length;
+    act(g, p.id, { type: 'skipDecor' });
+    expect(p.task).toBeNull();
+    expect(p.wall).toHaveLength(tiles);
+    expect(g.decor['1x1']).toBe(0);
+  });
+
+  it('bots swap when the decor they are owed has run out', () => {
+    const { g, p } = excessWithoutSconces();
+    const first = botDecide(viewFor(g, p.id), p.id, () => 0.5);
+    expect(first?.type).toBe('swapDecor');
+    act(g, p.id, first!);
+    expect(botDecide(viewFor(g, p.id), p.id, () => 0.5)).toEqual({ type: 'decor', shapes: ['1x1'] });
   });
 });
 
@@ -601,6 +719,29 @@ describe('full games', () => {
         }
       }
     }
+  });
+
+  it('bot games still finish without breaking a rule when the 1-point decor runs out', () => {
+    let swaps = 0;
+    let soldOut = 0;
+    for (let n = RULES.minPlayers; n <= RULES.maxPlayers; n++) {
+      for (let seed = 1; seed <= 12; seed++) {
+        let hit = false;
+        const { s } = playBotGame(seed * 197 + n, n, {
+          check: true,
+          // A small supply of sconces, so they run out while players still have some on their walls.
+          prepare: (st) => (st.decor['1x1'] = 10),
+          onEvents: (events, st) => {
+            swaps += events.filter((e) => e.t === 'swapDecor').length;
+            if (st.decor['1x1'] === 0) hit = true;
+          },
+        });
+        expect(s.phase.kind).toBe('over');
+        if (hit) soldOut++;
+      }
+    }
+    expect(soldOut).toBeGreaterThan(0);
+    expect(swaps).toBeGreaterThan(0);
   });
 
   it('bots only use what their own view shows', () => {

@@ -1,8 +1,8 @@
-import { DECOR_INFO, GENRE_INFO, PAINTING_SIZES, RULES, sizeKey } from '../../shared/content';
+import { DECOR_INFO, GENRE_INFO, PAINTING_SIZES, RULES, decorList, sizeKey } from '../../shared/content';
 import { taskOptions } from '../../shared/options';
-import type { Action, DecorShape, GameView, PlayerView, Tile } from '../../shared/types';
-import { cornersCovered, coversStar, gridOf, legalSpots, matchingFrames, overlapsEyeline, sameGenre, starterSpots } from '../../shared/wall';
-import { el, esc, renderIf } from './dom';
+import { DECOR_SHAPES, type Action, type DecorShape, type GameView, type Genre, type Painting, type PlayerView, type Tile } from '../../shared/types';
+import { cornersCovered, coversStar, fits, gridOf, legalSpots, matchingFrames, overlapsEyeline, sameGenre, starterSpots } from '../../shared/wall';
+import { el, esc, ordinal, renderIf } from './dom';
 import { icon } from './icons';
 import { disc, dot, genreTag, shieldsHtml, sizeShape, sizeText, tileCard, tileName } from './parts';
 
@@ -29,6 +29,10 @@ export interface PromptHost {
   marks(matches: string[], faux: string[]): void;
   /** Looks at your own wall (used when you start choosing a painting). */
   lookAtMyWall(): void;
+  /** Opens the folded panel again while a wall stays on screen. */
+  unfold(): void;
+  /** Opens the museum window, at one type's paintings. */
+  museum(genre: Genre): void;
 }
 
 interface Local {
@@ -43,14 +47,36 @@ interface Local {
 
 const fresh = (key: string): Local => ({ key, sizes: [], bid: null, lot: null, which: 'new', decor: [], pending: false });
 
+/**
+ * Where a painting with no room on a player's wall could still go: the assistant (free now, or once the
+ * tile it holds is hung) and how many same-type museum paintings would fit to swap it for.
+ */
+function noRoom(v: GameView, p: PlayerView, lot: Painting): { helper: 'free' | 'after' | null; swaps: number } {
+  const grid = gridOf(p.wall);
+  return {
+    helper: !p.assistant ? 'free' : fits(grid, p.assistant.w, p.assistant.h) ? 'after' : null,
+    swaps: v.museum[lot.genre].filter((m) => fits(grid, m.w, m.h)).length,
+  };
+}
+
 export class Prompts {
   readonly root = el('div', 'prompt');
   private local: Local = fresh('');
   private view: GameView | null = null;
   private me: string | null = null;
   private info: HTMLElement | null = null;
+  /** True while hovering the decor swap button outlines tiles on my wall. */
+  private swapMarked = false;
+  folded = false;
 
   constructor(private host: PromptHost) {}
+
+  /** A rebuilt or hidden panel loses the hovered swap button without a mouseleave, so its outlines go here. */
+  private clearSwapMarks() {
+    if (!this.swapMarked) return;
+    this.swapMarked = false;
+    this.host.marks([], []);
+  }
 
   /** The server rejected the last action: let the player try again. */
   unlock() {
@@ -59,6 +85,7 @@ export class Prompts {
   }
 
   hide() {
+    this.clearSwapMarks();
     this.root.innerHTML = '';
     this.root.dataset.sig = '';
     this.root.className = 'prompt';
@@ -90,9 +117,10 @@ export class Prompts {
     if (key !== this.local.key) this.local = fresh(key);
     if (!p || ph.kind === 'over') return this.hide();
     const L = this.local;
-    const sig = JSON.stringify([key, L, this.host.pinned(), v.players.map((x) => [x.hasBid, !!x.task, !!x.starter]), v.supply, v.museum.city.length + v.museum.portrait.length + v.museum.still.length + v.museum.landscape.length]);
+    const sig = JSON.stringify([key, L, this.host.pinned(), this.folded, v.players.map((x) => [x.hasBid, !!x.task, !!x.starter]), v.supply, v.museum.city.length + v.museum.portrait.length + v.museum.still.length + v.museum.landscape.length]);
     renderIf(this.root, sig, () => {
-      this.root.className = `prompt ${L.pending ? 'pending' : ''}`;
+      this.clearSwapMarks();
+      this.root.className = `prompt ${L.pending ? 'pending' : ''} ${this.folded ? 'folded' : ''}`;
       this.root.innerHTML = '';
       this.info = null;
       let placing = false;
@@ -111,17 +139,59 @@ export class Prompts {
           break;
       }
       if (!placing) this.host.stopPlace();
+      for (const side of this.root.querySelectorAll('.task-side')) if (!side.childElementCount) side.remove();
+      for (const body of this.root.querySelectorAll<HTMLElement>('.pr-body')) this.watchOverflow(body);
+      if (this.folded) {
+        // Folded while a wall is on screen: one line that says what the step is, and a way back.
+        for (const box of this.root.querySelectorAll('.pr-box')) {
+          const b = el('button', 'btn ghost pr-unfold', `${icon('up')} Show`);
+          b.title = 'Open this panel again';
+          b.addEventListener('click', () => this.host.unfold());
+          box.appendChild(b);
+        }
+      }
       if (this.animatedKey === key) this.root.querySelectorAll('.pr-box').forEach((b) => b.classList.add('still'));
       this.animatedKey = key;
     });
   }
 
+  /** Folds the panel down to one line, so a wall can use the screen (see GameScreen.syncFold). */
+  setFolded(on: boolean) {
+    if (on === this.folded) return;
+    this.folded = on;
+    this.rerender();
+  }
+
   // ---------- helpers ----------
 
+  /**
+   * A prompt box. It returns the box's body, which scrolls when the window is short; whatever goes in
+   * the box's foot (see `foot`) stays in view below it.
+   */
   private box(cls: string, kicker: string, title: string, hint = ''): HTMLElement {
-    const b = el('div', `pr-box ${cls}`, `${kicker ? `<div class="pr-kicker">${kicker}</div>` : ''}<div class="pr-title">${title}</div>${hint ? `<div class="pr-hint">${hint}</div>` : ''}`);
+    const b = el('div', `pr-box ${cls}`);
+    const body = el('div', 'pr-body', `${kicker ? `<div class="pr-kicker">${kicker}</div>` : ''}<div class="pr-title">${title}</div>${hint ? `<div class="pr-hint">${hint}</div>` : ''}`);
+    b.appendChild(body);
     this.root.appendChild(b);
-    return b;
+    return body;
+  }
+
+  /** The part of a prompt box that never scrolls away: the controls that finish the step. */
+  private foot(body: HTMLElement): HTMLElement {
+    const box = body.parentElement!;
+    let f = box.querySelector<HTMLElement>(':scope > .pr-foot');
+    if (!f) {
+      f = el('div', 'pr-foot');
+      box.appendChild(f);
+    }
+    return f;
+  }
+
+  /** Fades the bottom edge of a body that has more to scroll to. */
+  private watchOverflow(body: HTMLElement) {
+    const update = () => body.classList.toggle('more', body.scrollHeight - body.scrollTop - body.clientHeight > 2);
+    body.addEventListener('scroll', update, { passive: true });
+    requestAnimationFrame(update);
   }
 
   private button(label: string, cls: string, onClick: () => void, disabled = false): HTMLButtonElement {
@@ -213,9 +283,9 @@ export class Prompts {
     const side = el('div', 'task-side');
     row.appendChild(side);
     box.appendChild(row);
-    this.infoLine(side);
+    this.infoLine(this.foot(box));
     const acts = el('div', 'pr-actions');
-    side.appendChild(acts);
+    this.foot(box).appendChild(acts);
     const commit = (sp: Spot) => this.send({ type: 'starter', x: sp.x, y: sp.y });
     this.commitHandler = commit;
     this.pinnedActions(acts);
@@ -275,22 +345,50 @@ export class Prompts {
       }, L.sizes.length >= want),
     );
     acts.appendChild(this.button(`Reveal ${want} paintings`, 'primary', () => this.send({ type: 'auction', sizes: [...L.sizes] }), L.sizes.length !== want));
-    box.appendChild(acts);
+    this.foot(box).appendChild(acts);
   }
 
-  /** Lot cards with hints about whether they fit on my wall. */
+  /**
+   * Lot cards with hints about whether they fit on my wall and, when one does not, where it could go:
+   * to my assistant, swapped for a same-type museum painting that fits, or else into excess.
+   */
   private lotRow(v: GameView, p: PlayerView, onPick?: (id: string) => void): HTMLElement {
     const row = el('div', 'lots');
     const grid = gridOf(p.wall);
     for (const lot of v.lots) {
-      const spots = legalSpots(grid, lot.w, lot.h);
-      const fit = spots.length ? `<span class="fit ok">${icon('check')} fits</span>` : `<span class="fit no">${icon('close')} no room</span>`;
+      let fit = `<span class="fit ok">${icon('check')} fits</span>`;
+      if (!legalSpots(grid, lot.w, lot.h).length) {
+        const { helper, swaps } = noRoom(v, p, lot);
+        const type = esc(GENRE_INFO[lot.genre].name);
+        const alts = [
+          helper
+            ? `<span class="fit-alt" title="${helper === 'free' ? 'Your assistant is free and could hold it for later' : "Hang your assistant's tile first, then the assistant could hold this one"}">${icon('assistant')} assistant</span>`
+            : '',
+          swaps
+            ? `<button class="fit-alt swap" title="The museum has ${swaps} ${type} painting${swaps === 1 ? '' : 's'} that would fit your wall: you could swap this one for ${swaps === 1 ? 'it' : 'one of them'}. Click to see the museum.">${icon('swap')} ${swaps} to swap</button>`
+            : '',
+        ].join('');
+        fit = `<span class="fit no">${icon('close')} no room</span>${
+          alts
+            ? `<span class="fit-alts">${alts}</span>`
+            : `<span class="fit-alts"><span class="fit-alt bad" title="Nothing could take it: it would be stored as excess (\u2212${RULES.excessPenalty} at the end) and you would take a 1-point decor tile">${icon('box')} excess</span></span>`
+        }`;
+      }
       const card = tileCard(lot, {
         compact: true,
         cls: `${this.local.lot === lot.id ? 'selected' : ''}`,
         footer: fit,
         onClick: onPick && !this.local.pending ? () => onPick(lot.id) : undefined,
       });
+      const swap = card.querySelector<HTMLElement>('.fit-alt.swap');
+      if (swap) {
+        swap.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.host.museum(lot.genre);
+        });
+        // Enter on the button opens the museum rather than choosing the card.
+        swap.addEventListener('keydown', (e) => e.stopPropagation());
+      }
       row.appendChild(card);
     }
     return row;
@@ -319,10 +417,11 @@ export class Prompts {
       });
       hand.appendChild(b);
     }
-    box.appendChild(hand);
+    // The cards and the seal button stay in view; only the paintings scroll on a short window.
+    this.foot(box).appendChild(hand);
     const acts = el('div', 'pr-actions');
     acts.appendChild(this.button(L.bid ? `Seal my bid of ${L.bid}` : 'Choose a card', 'primary', () => L.bid && this.send({ type: 'bid', card: L.bid }), !L.bid));
-    box.appendChild(acts);
+    this.foot(box).appendChild(acts);
   }
 
   private orderStrip(v: GameView): HTMLElement {
@@ -334,7 +433,10 @@ export class Prompts {
       if (!x) return;
       const state = i < ph.next ? (x.task ? 'hanging' : 'done') : i === ph.next ? 'picking' : 'waiting';
       const label = state === 'done' ? icon('check') : state === 'hanging' ? icon('frame') : state === 'picking' ? icon('arrow') : '';
-      strip.appendChild(el('div', `ord ${state} ${x.id === this.me ? 'me' : ''}`, `${disc(ph.bids[pid], x.color, 'small')}<span>${esc(x.name)}</span>${label}`));
+      const pill = el('div', `ord ${state} ${x.id === this.me ? 'me' : ''}`, `${disc(ph.bids[pid], x.color, 'small')}<span>${esc(x.name)}</span>${label}`);
+      const doing = { done: 'has picked', hanging: 'is hanging a painting', picking: 'is picking now', waiting: 'is waiting' }[state];
+      pill.title = `${x.name} bid ${ph.bids[pid]}: picks ${ordinal(i + 1)} and ${doing}`;
+      strip.appendChild(pill);
     });
     return strip;
   }
@@ -345,7 +447,7 @@ export class Prompts {
     const L = this.local;
     if (p.task) return this.renderTask(v, p);
     if (ph.order[ph.next] === p.id) {
-      const box = this.box('wide', 'Your pick', 'Choose a painting', 'Click one to try it on your wall, then take it.');
+      const box = this.box('wide pick', 'Your pick', 'Choose a painting', 'Click one to try it on your wall, then take it.');
       box.prepend(this.orderStrip(v));
       box.appendChild(
         this.lotRow(v, p, (id) => {
@@ -358,12 +460,16 @@ export class Prompts {
       const acts = el('div', 'pr-actions');
       if (lot) {
         const spots = legalSpots(gridOf(p.wall), lot.w, lot.h);
-        this.infoLine(box);
-        if (!spots.length) this.info!.innerHTML = `<span class="chip bad">${icon('close')} It does not fit on your wall right now</span>`;
+        this.infoLine(this.foot(box));
+        if (!spots.length) {
+          const { helper, swaps } = noRoom(v, p, lot);
+          const ways = [helper === 'free' ? 'your assistant can hold it' : helper === 'after' ? 'your assistant can hold it once its tile is hung' : '', swaps ? `swap it at the museum (${swaps} fit${swaps === 1 ? 's' : ''})` : ''].filter(Boolean);
+          this.info!.innerHTML = `<span class="chip bad">${icon('close')} No room on your wall: ${ways.length ? ways.join(', or ') : `it would be excess (\u2212${RULES.excessPenalty})`}</span>`;
+        }
         this.place(v, p, lot, spots, 'preview', () => undefined);
-        acts.appendChild(this.button(`Take \u201c${esc(lot.title)}\u201d`, 'primary', () => this.send({ type: 'take', lot: lot.id })));
+        acts.appendChild(this.button(`Take <span class="ell">\u201c${esc(lot.title)}\u201d</span>`, 'primary', () => this.send({ type: 'take', lot: lot.id })));
       } else acts.appendChild(this.button('Choose a painting above', 'primary', () => undefined, true));
-      box.appendChild(acts);
+      this.foot(box).appendChild(acts);
       return !!lot;
     }
     const picker = v.players.find((x) => x.id === ph.order[ph.next]);
@@ -385,15 +491,17 @@ export class Prompts {
 
     if (opt.stage === 'decor') {
       const k = opt.reward;
+      const forExcess = opt.rewardFrom === 'excess';
       const box = this.box(
         'task',
-        `${icon('frame')} Matching frames`,
-        opt.multi ? `Take decor adding up to ${k} points` : `Take a decor tile worth up to ${k}`,
+        forExcess ? `${icon('box')} Excess painting` : `${icon('frame')} Matching frames`,
+        forExcess ? 'Take your 1-point decor tile' : opt.multi ? `Take decor adding up to ${k} points` : `Take a decor tile worth up to ${k}`,
         'Decor fills awkward gaps and scores its shields at the end. You can hang it now or give it to your assistant.',
       );
       const row = el('div', 'decor-pick');
       const total = L.decor.reduce((s, d) => s + DECOR_INFO[d].points, 0);
-      for (const s of opt.decorShapes) {
+      // Sold-out sizes stay on show, so it is clear why they cannot be taken.
+      for (const s of DECOR_SHAPES.filter((x) => DECOR_INFO[x].points <= k)) {
         const d = DECOR_INFO[s];
         const takenNow = L.decor.filter((x) => x === s).length;
         const left = v.decor[s] - takenNow;
@@ -401,7 +509,7 @@ export class Prompts {
         const b = el(
           'button',
           'decor-btn',
-          `${sizeShape(d.w, d.h, 12)}<span class="dn">${esc(d.name)}</span>${shieldsHtml(d.points)}<span class="dl">${left} left${fits ? '' : ' \u00b7 no room'}</span>`,
+          `${sizeShape(d.w, d.h, 12)}<span class="dn">${esc(d.name)}</span>${shieldsHtml(d.points)}<span class="dl">${v.decor[s] <= 0 ? 'sold out' : `${left} left${fits ? '' : ' \u00b7 no room'}`}</span>`,
         );
         b.disabled = L.pending || left <= 0 || (opt.multi && total + d.points > k);
         b.addEventListener('click', () => {
@@ -412,6 +520,37 @@ export class Prompts {
         row.appendChild(b);
       }
       box.appendChild(row);
+      const swap = opt.swaps[0];
+      if (swap) {
+        // The rulebook's way out when a size runs out: trade short decor on the wall for one long tile.
+        const wrap = el(
+          'div',
+          'decor-swap',
+          `<div class="pr-hint">${icon('swap')} The supply has run out of ${swap.frees.map((s) => esc(DECOR_INFO[s].plural)).join(' and ')}. Swap decor on your wall for a longer tile to put some back. Your points stay the same.</div>`,
+        );
+        const b = this.button(
+          `${icon('swap')} Swap ${esc(decorList(swap.removed))} for a ${esc(DECOR_INFO[swap.shape].name.toLowerCase())}`,
+          opt.decorShapes.length ? 'ghost' : 'primary',
+          () => {
+            this.clearSwapMarks();
+            this.send({ type: 'swapDecor', shape: swap.shape, x: swap.x, y: swap.y });
+          },
+        );
+        b.addEventListener('mouseenter', () => {
+          if (this.local.pending) return;
+          this.swapMarked = true;
+          this.host.marks(swap.removed.map((d) => d.id), []);
+        });
+        b.addEventListener('mouseleave', () => this.clearSwapMarks());
+        wrap.appendChild(b);
+        // When nothing in the supply can be taken, the swap is the way forward, so it stays in view.
+        (opt.decorShapes.length ? box : this.foot(box)).appendChild(wrap);
+      }
+      if (opt.canSkipDecor) {
+        const acts = el('div', 'pr-actions');
+        acts.appendChild(this.button('Go without', 'ghost', () => this.send({ type: 'skipDecor' })));
+        this.foot(box).appendChild(acts);
+      }
       if (opt.multi) {
         const acts = el('div', 'pr-actions');
         const chips = el('div', 'size-chips');
@@ -427,7 +566,7 @@ export class Prompts {
         acts.appendChild(chips);
         acts.appendChild(el('span', 'pr-hint', `${total} of ${k}`));
         acts.appendChild(this.button('Take this decor', 'primary', () => this.send({ type: 'decor', shapes: [...L.decor] }), !L.decor.length));
-        box.appendChild(acts);
+        this.foot(box).appendChild(acts);
       }
       return false;
     }
@@ -440,9 +579,9 @@ export class Prompts {
       const side = el('div', 'task-side');
       row.appendChild(side);
       box.appendChild(row);
-      this.infoLine(side);
+      this.infoLine(this.foot(box));
       const acts = el('div', 'pr-actions');
-      side.appendChild(acts);
+      this.foot(box).appendChild(acts);
       const commit = (sp: Spot) => this.send({ type: 'hang', which: 'assistant', x: sp.x, y: sp.y });
       this.commitHandler = commit;
       this.pinnedActions(acts);
@@ -475,8 +614,8 @@ export class Prompts {
     let placing = false;
     const fits = usingAssistant ? opt.assistantFits : opt.headFits;
     if (fits) {
-      this.infoLine(side);
-      side.appendChild(acts);
+      this.infoLine(this.foot(box));
+      this.foot(box).appendChild(acts);
       const which = usingAssistant ? 'assistant' : 'new';
       const commit = (sp: Spot) => this.send({ type: 'hang', which, x: sp.x, y: sp.y });
       this.commitHandler = commit;
@@ -485,7 +624,7 @@ export class Prompts {
       placing = true;
     } else {
       side.appendChild(el('div', 'warn', `${icon('close')} ${tile.kind === 'painting' ? 'This painting' : 'This decor'} does not fit anywhere on your wall.`));
-      side.appendChild(acts);
+      this.foot(box).appendChild(acts);
     }
     if (!usingAssistant) {
       if (opt.canAssist) acts.appendChild(this.button(`${icon('assistant')} Give to my assistant`, fits ? 'ghost' : 'primary', () => this.send({ type: 'assist' })));

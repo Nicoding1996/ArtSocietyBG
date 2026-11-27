@@ -230,7 +230,14 @@ function chooseDecor(o: Outlook, me: PlayerView, shapes: DecorShape[], reward: n
 function taskStep(o: Outlook, v: GameView, me: PlayerView, rand: Rand): Action | null {
   const opt = taskOptions(v, me);
   if (!opt) return null;
-  if (opt.stage === 'decor') return { type: 'decor', shapes: chooseDecor(o, me, opt.decorShapes, opt.reward, opt.multi, v.decor, rand) };
+  if (opt.stage === 'decor') {
+    if (!opt.decorShapes.length) {
+      // The supply has run out of what the reward can buy: swap decor on the wall to free some up.
+      const useful = opt.swaps.find((s) => s.frees.some((f) => DECOR_INFO[f].points <= opt.reward));
+      return useful ? { type: 'swapDecor', shape: useful.shape, x: useful.x, y: useful.y } : { type: 'skipDecor' };
+    }
+    return { type: 'decor', shapes: chooseDecor(o, me, opt.decorShapes, opt.reward, opt.multi, v.decor, rand) };
+  }
   const aide = me.assistant;
   const aideSpot = opt.canHangAssistant && aide ? bestSpot(o, me, aide, rand) : null;
   if (opt.stage === 'finish') {

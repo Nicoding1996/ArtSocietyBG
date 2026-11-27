@@ -27,9 +27,26 @@ export class Net {
   status: NetStatus = 'connecting';
   private ws: WebSocket | null = null;
   private retry = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private offset = 0;
   private handlers = new Set<(m: ServerMessage) => void>();
   private statusHandlers = new Set<(s: NetStatus) => void>();
+
+  constructor() {
+    // Leaving the page closes the connection at once, so the table sees the player go even when the
+    // browser keeps the page in its back-forward cache (with the socket still open, the player would
+    // look present until they came back). Coming back to a cached page connects again.
+    window.addEventListener('pagehide', () => {
+      if (this.retryTimer) clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+      const ws = this.ws;
+      this.ws = null;
+      ws?.close();
+    });
+    window.addEventListener('pageshow', (e) => {
+      if (e.persisted && !this.ws) this.connect();
+    });
+  }
 
   get room(): string | null {
     return sessionStorage.getItem(ROOM_KEY);
@@ -77,7 +94,10 @@ export class Net {
       if (this.ws !== ws) return;
       this.setStatus('closed');
       const delay = Math.min(8000, 500 * 2 ** this.retry++);
-      setTimeout(() => this.connect(), delay);
+      this.retryTimer = setTimeout(() => {
+        this.retryTimer = null;
+        this.connect();
+      }, delay);
     };
   }
 

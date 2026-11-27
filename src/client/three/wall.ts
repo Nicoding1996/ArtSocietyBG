@@ -40,6 +40,13 @@ function outlineRect(w: number, h: number, thick: number, mat: THREE.Material): 
   return g;
 }
 
+/** Takes an outline off the wall and frees its bars and its own material. */
+function freeOutline(o: THREE.Group) {
+  o.removeFromParent();
+  for (const c of o.children) (c as THREE.Mesh).geometry.dispose();
+  ((o.children[0] as THREE.Mesh | undefined)?.material as THREE.Material | undefined)?.dispose();
+}
+
 /** Centre of a w x h rectangle at cell (x, y), in wall-local coordinates. */
 export function cellLocal(x: number, y: number, w: number, h: number, z = 0): THREE.Vector3 {
   return new THREE.Vector3(-GRID_W / 2 + (x + w / 2) * CELL_W, GRID_TOP - (y + h / 2) * CELL_H, z);
@@ -63,7 +70,7 @@ export class GalleryWall {
   private spotCanvas: HTMLCanvasElement;
   private spotTex: THREE.CanvasTexture;
   private plaque: THREE.Mesh;
-  private flashes: { obj: THREE.Object3D; mat: THREE.MeshBasicMaterial; age: number; life: number }[] = [];
+  private flashes: { obj: THREE.Group; mat: THREE.MeshBasicMaterial; age: number; life: number }[] = [];
   private t = Math.random() * 10;
 
   constructor(
@@ -268,6 +275,9 @@ export class GalleryWall {
         this.hung.delete(id);
       }
     }
+    // An outline leaves with its tile (a decor swap can take a marked tile off the wall).
+    for (const m of this.marks) if (!ids.has(m.userData.tile as string)) freeOutline(m);
+    this.marks = this.marks.filter((m) => ids.has(m.userData.tile as string));
     for (const h of wall) if (!this.hung.has(h.tile.id)) this.hung.set(h.tile.id, this.makeHung(h));
   }
 
@@ -419,7 +429,7 @@ export class GalleryWall {
 
   /** Outlines the tiles a placement would match (gold) or clash with (red). */
   setMarks(matches: string[], faux: string[]) {
-    for (const m of this.marks) this.group.remove(m);
+    for (const m of this.marks) freeOutline(m);
     this.marks = [];
     const add = (id: string, color: string) => {
       const p = this.hung.get(id);
@@ -427,6 +437,7 @@ export class GalleryWall {
       const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthWrite: false });
       const o = outlineRect(p.tile.w * CELL_W - 0.02, p.tile.h * CELL_H - 0.02, 0.03, mat);
       o.position.copy(p.obj.position).setZ(0.085);
+      o.userData.tile = id;
       this.group.add(o);
       this.marks.push(o);
     };
@@ -479,6 +490,7 @@ export class GalleryWall {
       const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthWrite: false });
       const o = outlineRect(p.tile.w * CELL_W - 0.03, p.tile.h * CELL_H - 0.03, 0.04, mat);
       o.position.copy(p.obj.position).setZ(0.095);
+      o.userData.tile = id;
       this.group.add(o);
       this.marks.push(o);
     }
@@ -504,10 +516,7 @@ export class GalleryWall {
       const k = f.age / f.life;
       f.mat.opacity = Math.max(0, Math.sin(Math.min(1, k) * Math.PI)) * (0.6 + 0.4 * Math.sin(f.age * 18));
     }
-    for (const f of this.flashes.filter((x) => x.age >= x.life)) {
-      this.group.remove(f.obj);
-      f.mat.dispose();
-    }
+    for (const f of this.flashes.filter((x) => x.age >= x.life)) freeOutline(f.obj);
     this.flashes = this.flashes.filter((x) => x.age < x.life);
     if (this.ghost) {
       const pulse = 0.75 + Math.sin(this.t * 5) * 0.2;

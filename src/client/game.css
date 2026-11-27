@@ -71,9 +71,8 @@
   width: 100%;
   max-width: none;
   max-height: 100%;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 14px;
-  scrollbar-width: thin;
 }
 
 .side .pr-title {
@@ -130,6 +129,180 @@
 
 .side .order {
   justify-content: flex-start;
+}
+
+/* In the side column the pick order fits on one line: you and whoever picks now keep your names,
+   the others show their bid disc and status (their name is in the tooltip and on their player card). */
+.side .ord:not(.me):not(.picking) {
+  padding-right: 6px;
+}
+
+.side .ord:not(.me):not(.picking) > span:not(.disc) {
+  display: none;
+}
+
+/* ---------- prompt boxes: the body scrolls on a short window, the foot always stays in view ---------- */
+
+/* The panel at the bottom never grows past the top bar. */
+.hud > .prompt-slot {
+  top: 64px;
+  align-items: flex-end;
+}
+
+.hud > .prompt-slot > .prompt {
+  flex-direction: column;
+  align-items: center;
+  max-height: 100%;
+}
+
+.pr-box {
+  min-height: 0;
+}
+
+.pr-body {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.pr-box.center .pr-body {
+  align-items: center;
+}
+
+.pr-body.more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+
+.pr-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+}
+
+.pr-foot .btn {
+  min-width: 0;
+}
+
+/* Long painting titles shorten instead of pushing the button off the panel. */
+.btn .ell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- folded to one line while a wall is on screen ---------- */
+
+.pr-unfold {
+  display: none;
+}
+
+.prompt.folded .pr-box {
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 8px 8px 18px;
+}
+
+.prompt.folded .pr-body {
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+  overflow: hidden;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.prompt.folded .pr-body > :not(.pr-kicker):not(.pr-title),
+.prompt.folded .pr-foot {
+  display: none;
+}
+
+.prompt.folded .pr-kicker,
+.prompt.folded .pr-title {
+  white-space: nowrap;
+  flex-wrap: nowrap;
+}
+
+.prompt.folded .pr-title {
+  font-size: 17px;
+}
+
+.prompt.folded .pr-unfold {
+  display: inline-flex;
+  flex: none;
+  padding: 7px 13px;
+}
+
+.pr-unfold svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ---------- "while you were away" ---------- */
+
+.recap-layer {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 41;
+}
+
+.recap {
+  pointer-events: auto;
+  width: min(440px, 92vw);
+  max-height: min(380px, 60vh);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px 12px 16px;
+  border-radius: 14px;
+  background: var(--panel-strong);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.recap.show {
+  opacity: 1;
+  transform: none;
+}
+
+.recap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.recap-close {
+  width: 28px;
+  height: 28px;
+}
+
+.recap-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  font-size: 13px;
+}
+
+.recap-more {
+  font-size: 11.5px;
+  color: var(--muted);
 }
 
 /* ---------- player cards ---------- */
@@ -218,26 +391,72 @@
   opacity: 0.25;
 }
 
-.frame-gilded {
-  background: linear-gradient(135deg, #f8e3a0 0%, #b8862f 35%, #f3d68e 55%, #9a6a22 100%);
+/* The four frames, as on the walls (three/frames.ts). Pearl and Gilded lay their ornament over the
+   frame as an SVG border image with a crest on top (ui/frameArt.ts), 20 SVG units to the band. */
+.frame-ivory::before,
+.frame-gilded::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset: calc(var(--fw, 6px) * -0.2);
+  border: calc(var(--fw, 6px) * 1.7) solid transparent;
+  border-image: var(--frame-svg) 34 / calc(var(--fw, 6px) * 1.7) stretch;
+  pointer-events: none;
+}
+
+.frame-ivory::after,
+.frame-gilded::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: calc(var(--fw, 6px) * -0.3);
+  width: calc(var(--fw, 6px) * 3);
+  height: calc(var(--fw, 6px) * 1.3);
+  transform: translateX(-50%);
+  background: var(--crest-svg) center / 100% 100% no-repeat;
+  pointer-events: none;
 }
 
 .frame-ivory {
-  background: linear-gradient(135deg, #fbf5e6, #ddd0b0);
-  box-shadow: inset 0 0 0 1px #c9a25a, 0 4px 12px rgba(0, 0, 0, 0.45);
+  --frame-svg: var(--pearl-frame);
+  --crest-svg: var(--pearl-crest);
+  background: linear-gradient(125deg, #fffaf1 0%, #ece3d3 30%, #f7e6ef 48%, #e4eff0 60%, #e8dfcf 78%, #fbf6ec 100%);
 }
 
+.frame-gilded {
+  --frame-svg: var(--gilt-frame);
+  --crest-svg: var(--gilt-crest);
+  background: linear-gradient(135deg, #f8e3a0 0%, #b8862f 35%, #f3d68e 55%, #9a6a22 100%);
+}
+
+/* Slim, with rounded corners. */
 .frame-silver {
+  padding: calc(var(--fw, 6px) * 0.72);
+  border-radius: calc(var(--fw, 6px) * 1.3);
   background: linear-gradient(135deg, #f4f7fa 0%, #98a4b0 40%, #e6ebf0 60%, #77828e 100%);
 }
 
+.frame-silver .thumb-img {
+  border-radius: calc(var(--fw, 6px) * 0.35);
+  box-shadow: 0 0 0 1px #f7fafc;
+}
+
+/* Wide: four mitred pieces, lit from the top left, with a brass inner edge. */
 .frame-walnut {
-  background: linear-gradient(135deg, #7a4a2a, #3a2010);
-  box-shadow: inset 0 0 0 1px rgba(226, 194, 122, 0.35), 0 4px 12px rgba(0, 0, 0, 0.45);
+  padding: 0;
+  border: calc(var(--fw, 6px) * 1.15) solid;
+  border-color: #74472a #5b351d #3e2312 #5b351d;
+  background: #3e2312;
+}
+
+.frame-walnut .thumb-img {
+  box-shadow: 0 0 0 1.5px #c9a25a;
 }
 
 .thumb-genre {
   position: absolute;
+  z-index: 2;
   left: 50%;
   bottom: 0;
   transform: translate(-50%, 30%);
@@ -422,8 +641,8 @@
 }
 
 .ft-ivory i {
-  background: #efe5cf;
-  box-shadow: inset 0 0 0 1px #c9a25a;
+  background: linear-gradient(135deg, #fffaf1, #f3e6ee 50%, #e4eff0);
+  box-shadow: inset 0 0 0 1px #c79b3f;
 }
 
 .ft-silver i {
@@ -861,6 +1080,19 @@ svg.sh {
   color: var(--muted);
 }
 
+/* Swapping decor on the wall when a size has run out. */
+.decor-swap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.decor-swap .btn {
+  align-self: stretch;
+  white-space: normal;
+}
+
 /* ---------- museum panel ---------- */
 
 .museum .mu-row {
@@ -1096,5 +1328,813 @@ svg.sh {
   }
   .pr-title {
     font-size: 21px;
+  }
+}
+
+/* In the bottom panel the paintings on offer shrink a little before they wrap onto a second row. */
+.hud > .prompt-slot .lots .tcard.compact {
+  flex: 1 1 108px;
+  width: auto;
+  min-width: 0;
+  max-width: 150px;
+}
+
+/* ---------- walls drawn as plans: on the player cards, beside them, and in the galleries ---------- */
+
+.mw {
+  position: relative;
+  width: 100%;
+  border-radius: 2px;
+  background: #1c2827;
+  box-shadow: inset 0 0 0 1px rgba(226, 194, 122, 0.4);
+  overflow: hidden;
+}
+
+/* The large versions show the grid. They are measured in cells (10 across, so a cell is 10cqw). */
+.mw.art {
+  container-type: inline-size;
+  border-radius: 4px;
+  background:
+    linear-gradient(rgba(255, 245, 225, 0.05) 1px, transparent 1px) 0 0 / 100% calc(100% / 14),
+    linear-gradient(90deg, rgba(255, 245, 225, 0.05) 1px, transparent 1px) 0 0 / 10% 100%,
+    #1c2827;
+  box-shadow: inset 0 0 0 1px rgba(226, 194, 122, 0.5), 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.mw-eye {
+  position: absolute;
+  background: rgba(255, 236, 190, 0.08);
+}
+
+.mw.art .mw-eye {
+  border-top: 1px dashed rgba(226, 194, 122, 0.45);
+  border-bottom: 1px dashed rgba(226, 194, 122, 0.45);
+  box-sizing: border-box;
+}
+
+/* A corner that is still bare costs points at the end. */
+.mw-corner {
+  position: absolute;
+  background: rgba(255, 120, 100, 0.28);
+}
+
+.mw-t {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.mw-t.painting {
+  background: var(--gc);
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.55);
+}
+
+.mw-t.decor {
+  background: rgba(236, 226, 204, 0.62);
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.45);
+}
+
+.mw.art .mw-t {
+  border: 2px solid var(--fc, #cdbf9f);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.mw.art .mw-t.decor {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, #efe5cf, #cbbd9b);
+}
+
+.mw.art .mw-t.decor .shields svg {
+  width: 9px;
+  height: 9px;
+}
+
+.mw-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The type's colour on a tab at the foot of each painting, as on the frames in the salon. */
+.mw.art .mw-g {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: max(9px, 3.6cqw);
+  height: max(6px, 2.4cqw);
+  border-radius: 3px 3px 0 0;
+  background: var(--gc);
+  box-shadow: 0 0 0 1px #16120e;
+  color: #16120e;
+}
+
+.mw.art .mw-g svg {
+  width: 1.8cqw;
+  height: 1.8cqw;
+}
+
+/* Too small for the icon to read: the colour alone. */
+@container (max-width: 360px) {
+  .mw.art .mw-g svg {
+    display: none;
+  }
+}
+
+/* A painting in a faux pas scores no prestige points. */
+.mw-t.faux::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(45deg, transparent 0 3px, rgba(255, 90, 80, 0.55) 3px 4.5px);
+}
+
+/* The player card: what they hold on the left, their wall in miniature on the right. */
+.pc-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.pc-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.pc-mini {
+  flex: none;
+  width: 44px;
+  margin-top: 7px;
+}
+
+.wf {
+  display: flex;
+  align-items: center;
+  gap: 4px 7px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.wf > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.wf svg {
+  width: 13px;
+  height: 13px;
+  color: var(--muted);
+}
+
+.wf .wf-g svg {
+  color: var(--gc);
+}
+
+.wf .wf-gap {
+  flex: 1;
+}
+
+.wf .bad,
+.wf .bad svg {
+  color: #ff9a8a;
+}
+
+.wf .wf-assist {
+  gap: 5px;
+}
+
+/* The large wall beside a player card. */
+.wall-peek {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 30;
+  width: 292px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px 10px;
+  border-radius: 14px;
+  background: var(--panel-strong);
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--pc);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.14s ease, visibility 0.14s;
+}
+
+.wall-peek.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.wp-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.wp-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wp-score,
+.gal-score {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--gold-hi);
+}
+
+.wp-score svg,
+.gal-score svg {
+  width: 15px;
+  height: 15px;
+  color: var(--gold);
+}
+
+.wp-hint {
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--muted);
+}
+
+/* ---------- the galleries and the museum windows ---------- */
+
+.viewer h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 34px;
+  font-style: italic;
+  color: var(--gold);
+}
+
+.viewer h2 svg {
+  width: 28px;
+  height: 28px;
+}
+
+.viewer .lead {
+  margin: 4px 0 14px;
+  max-width: 760px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.viewer kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  background: rgba(255, 245, 225, 0.06);
+  color: var(--ivory);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.viewer-keys {
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* These two windows are wider than the others; their content stays inside the padding. */
+.galleries-back .modal,
+.museum-view-back .modal {
+  max-width: min(1180px, 96vw);
+}
+
+.galleries {
+  width: min(1120px, 88vw);
+}
+
+.gal-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  gap: 14px;
+}
+
+.gal-card {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--pc);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.gal-card:hover,
+.gal-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+  border-top-color: var(--pc);
+  background: rgba(255, 245, 225, 0.05);
+}
+
+.gal-card.me {
+  background: color-mix(in srgb, var(--pc) 9%, rgba(0, 0, 0, 0.22));
+}
+
+.gal-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.gal-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gal-lots h3,
+.mv-head {
+  margin: 18px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 19px;
+  color: var(--gold-hi);
+}
+
+.gal-lots h3 svg {
+  width: 18px;
+  height: 18px;
+}
+
+.gal-lot-row,
+.mv-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.gal-lot-row .tcard.compact,
+.mv-list .tcard.compact {
+  width: 140px;
+}
+
+.fitdots {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.fitdot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid var(--pc);
+  box-sizing: border-box;
+}
+
+.fitdot.ok {
+  background: var(--pc);
+}
+
+.fitdot.no {
+  opacity: 0.4;
+}
+
+.museum-view {
+  width: min(940px, 88vw);
+}
+
+.mv-sec {
+  margin-top: 12px;
+  padding: 2px 14px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gc);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.mv-sec.focus {
+  border-color: color-mix(in srgb, var(--gc) 55%, transparent);
+  border-left-color: var(--gc);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gc) 35%, transparent);
+}
+
+.mv-head {
+  margin: 12px 0 10px;
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+
+.mv-stat {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.mv-stat b {
+  color: var(--ivory);
+}
+
+.mv-empty {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 13px;
+}
+
+.tcard.dim {
+  opacity: 0.55;
+}
+
+/* The museum panel: each type opens its pile of paintings. */
+.museum .mu-row {
+  grid-template-columns: auto 1fr auto auto auto;
+  margin: 0 -6px;
+  padding-left: 6px;
+  padding-right: 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.museum .mu-row:hover,
+.museum .mu-row:focus-visible {
+  background: rgba(255, 245, 225, 0.06);
+  outline: none;
+}
+
+.mu-pile {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 26px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mu-pile svg {
+  width: 12px;
+  height: 12px;
+}
+
+.mu-pile.none {
+  opacity: 0.45;
+}
+
+.mu-foot {
+  justify-content: space-between;
+}
+
+.mu-foot > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mu-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  border: 1px solid rgba(226, 194, 122, 0.4);
+  background: rgba(226, 194, 122, 0.08);
+  color: var(--gold-hi);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mu-open:hover {
+  background: rgba(226, 194, 122, 0.18);
+}
+
+.mu-open svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* Where a painting with no room could still go. */
+.fit-alts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+}
+
+.fit-alt {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.fit-alt svg {
+  width: 12px;
+  height: 12px;
+}
+
+button.fit-alt {
+  cursor: pointer;
+  color: var(--gold-hi);
+  border-color: rgba(226, 194, 122, 0.45);
+}
+
+button.fit-alt:hover,
+button.fit-alt:focus-visible {
+  background: rgba(226, 194, 122, 0.16);
+  outline: none;
+}
+
+.fit-alt.bad {
+  color: #ff9a8a;
+  border-color: rgba(255, 154, 138, 0.4);
+}
+
+/* ---------- players who are away ---------- */
+
+.pc-away {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 6px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.pc-away svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.pc-away.wait {
+  color: #ffd27a;
+}
+
+.pc-hand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid rgba(226, 194, 122, 0.5);
+  background: rgba(226, 194, 122, 0.1);
+  color: var(--gold-hi);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.pc-hand:hover {
+  background: rgba(226, 194, 122, 0.22);
+}
+
+/* ---------- the Esc menu ---------- */
+
+.game-menu {
+  width: min(380px, 84vw);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: center;
+}
+
+.game-menu h2 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 34px;
+  font-style: italic;
+  color: var(--gold);
+}
+
+.game-menu h2 svg {
+  width: 26px;
+  height: 26px;
+}
+
+.game-menu .lead {
+  margin: 4px 0 18px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.gm-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gm-actions .btn {
+  justify-content: center;
+}
+
+.gm-row {
+  display: flex;
+  gap: 8px;
+}
+
+.gm-row .btn {
+  flex: 1;
+}
+
+.gm-foot {
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* ---------- the lobby: what is above the buttons scrolls, the buttons stay in view ---------- */
+
+.lobby-card {
+  overflow: hidden;
+}
+
+.lobby-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin: 0 -26px;
+  padding: 0 26px;
+  scrollbar-width: thin;
+}
+
+.lobby-scroll > * {
+  flex: none;
+}
+
+.lobby-controls {
+  flex: none;
+}
+
+/* ---------- the lobby's table rules ---------- */
+
+.setting {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 245, 225, 0.03);
+  cursor: pointer;
+}
+
+.setting.locked {
+  cursor: default;
+}
+
+.setting input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.setting .switch {
+  flex: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--line-strong);
+  transition: background 0.2s ease;
+}
+
+.setting .switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--ivory);
+  transition: transform 0.2s ease;
+}
+
+.setting input:checked + .switch {
+  background: color-mix(in srgb, var(--gold) 70%, transparent);
+}
+
+.setting input:checked + .switch::after {
+  transform: translateX(16px);
+}
+
+.setting input:focus-visible + .switch {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.setting.locked .switch {
+  opacity: 0.6;
+}
+
+.s-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.s-text small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* Short windows (a laptop at 125% or a small browser window): tighter panels so their buttons fit. */
+@media (max-height: 680px) {
+  .pr-box {
+    padding: 10px 14px;
+    gap: 7px;
+  }
+  .pr-title {
+    font-size: 19px;
+  }
+  .pr-hint {
+    line-height: 1.35;
+  }
+  .side .pr-title {
+    font-size: 18px;
+  }
+  .tcard.compact {
+    padding: 6px;
+    gap: 4px;
+  }
+  .hud > .prompt-slot .tcard.compact .thumb-box {
+    zoom: 0.72;
+  }
+  .tc-title {
+    font-size: 13.5px;
+  }
+  .hand {
+    gap: 6px;
+  }
+  .bidcard {
+    width: 32px;
+    height: 32px;
+    font-size: 16.5px;
+  }
+  /* While you pick or hang, the side column gives the paintings as much of its height as it can. */
+  .hud.docked .museum .panel-title,
+  .hud.docked .museum .mu-foot,
+  .side .pr-box.pick .pr-body > .pr-hint {
+    display: none;
+  }
+  .hud.docked .museum .mu-row {
+    padding: 2px 0;
+  }
+  .side .order {
+    gap: 4px;
+  }
+  .side .ord {
+    max-width: 100%;
+    gap: 4px;
+    padding: 2px 8px 2px 2px;
+    font-size: 11.5px;
+  }
+  .side .ord > span:not(.disc) {
+    max-width: 82px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }

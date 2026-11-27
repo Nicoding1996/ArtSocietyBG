@@ -10,7 +10,7 @@ let escBound = false;
 
 export function initOverlays(ui: HTMLElement) {
   root = ui;
-  for (const cls of ['toasts', 'banner-layer', 'card-layer', 'tooltip', 'modal-layer']) {
+  for (const cls of ['toasts', 'recap-layer', 'banner-layer', 'card-layer', 'tooltip', 'modal-layer']) {
     if (!root.querySelector(`.${cls}`)) root.appendChild(el('div', cls));
   }
   if (!escBound) {
@@ -41,6 +41,56 @@ export function toast(text: string, kind: 'info' | 'error' | 'chat' = 'info', ms
     t.classList.remove('show');
     setTimeout(() => t.remove(), 400);
   }, ms);
+}
+
+export interface RecapLine {
+  text: string;
+  kind: string;
+  color?: string;
+}
+
+/** Stops the open recap card's timer and click listener. */
+let recapEnd: (() => void) | null = null;
+
+/**
+ * "While you were away": the chronicle lines the player missed while the tab was in the background,
+ * shown once on coming back instead of replaying every animation. Null removes it.
+ */
+export function recap(lines: RecapLine[] | null) {
+  const l = layer('recap-layer');
+  if (!l) return;
+  recapEnd?.();
+  l.innerHTML = '';
+  if (!lines?.length) return;
+  const shown = lines.slice(-7);
+  const more = lines.length - shown.length;
+  const card = el(
+    'div',
+    'recap',
+    `<div class="recap-head"><span class="pr-kicker">${icon('hall')} While you were away</span><button class="icon-btn recap-close" title="Close">${icon('close')}</button></div>
+    <div class="recap-lines">${shown.map((x) => `<div class="line log lk-${esc(x.kind)}">${x.color ? `<i class="pdot" style="--pc:${esc(x.color)}"></i>` : ''}${esc(x.text)}</div>`).join('')}</div>
+    ${more ? `<div class="recap-more">${more} earlier line${more === 1 ? '' : 's'} in the chronicle</div>` : ''}`,
+  );
+  l.appendChild(card);
+  requestAnimationFrame(() => card.classList.add('show'));
+  // It goes by itself after a while, with its close button, or as soon as the player clicks anything else.
+  const onDown = (e: PointerEvent) => {
+    if (!card.contains(e.target as Node)) close();
+  };
+  const timer = window.setTimeout(() => close(), 18000);
+  const end = () => {
+    clearTimeout(timer);
+    document.removeEventListener('pointerdown', onDown, true);
+    if (recapEnd === end) recapEnd = null;
+  };
+  const close = () => {
+    end();
+    card.classList.remove('show');
+    setTimeout(() => card.remove(), 350);
+  };
+  recapEnd = end;
+  document.addEventListener('pointerdown', onDown, true);
+  card.querySelector('.recap-close')!.addEventListener('click', close);
 }
 
 export async function banner(title: string, sub = '', ms = 1700, cls = '') {
@@ -125,17 +175,29 @@ export function tileTooltip(t: Tile, owner: PlayerView | undefined, v: GameView 
     return `<div class="tt-title">${esc(DECOR_INFO[t.shape].name)}</div><div class="tt-text">${shieldsHtml(t.points)} Decor, worth ${t.points} at the end${owner ? ` \u00b7 ${esc(owner.name)}` : ''}</div>`;
   }
   const mult = v ? ranking(v.prestige).multipliers[t.genre] : null;
+  const pile = !owner && v?.museum[t.genre].some((m) => m.id === t.id) ? v.museum[t.genre] : null;
+  const where = pile
+    ? `In the museum's ${esc(GENRE_INFO[t.genre].name)} pile (${pile.length}) \u00b7 click to see the museum`
+    : `${mult ? `${GENRE_INFO[t.genre].name} is \u00d7${mult} right now` : ''}${owner ? ` \u00b7 ${esc(owner.name)}'s wall` : ''} \u00b7 click to look closer`;
   return `<div class="tt-title">${esc(t.title)}</div>
     <div class="tt-text">${genreTag(t.genre)} ${frameTag(t.frame)} \u00b7 ${sizeText(t.w, t.h)}</div>
-    <div class="tt-text muted">${mult ? `${GENRE_INFO[t.genre].name} is \u00d7${mult} right now` : ''}${owner ? ` \u00b7 ${esc(owner.name)}'s wall` : ''} \u00b7 click to look closer</div>`;
+    <div class="tt-text muted">${where}</div>`;
 }
+
+/** Runs when the open window is closed (not when another window replaces it). */
+let onModalClose: (() => void) | null = null;
 
 export function closeModal() {
+  const hook = onModalClose;
+  onModalClose = null;
   layer('modal-layer').innerHTML = '';
+  hook?.();
 }
 
-function modal(content: HTMLElement, cls = '') {
+/** Opens a window over the game (replacing any other) and returns its scrolling box. */
+export function modal(content: HTMLElement, cls = '', onClose?: () => void): HTMLElement {
   const l = layer('modal-layer');
+  onModalClose = onClose ?? null;
   l.innerHTML = '';
   const back = el('div', `modal-back ${cls}`);
   const box = el('div', 'modal');
@@ -148,6 +210,7 @@ function modal(content: HTMLElement, cls = '') {
     if (e.target === back) closeModal();
   });
   l.appendChild(back);
+  return box;
 }
 
 export function lightbox(t: Tile, owner: PlayerView | undefined, v: GameView | null) {
@@ -185,7 +248,7 @@ export function lightbox(t: Tile, owner: PlayerView | undefined, v: GameView | n
   modal(wrap, 'lb-back');
 }
 
-export function showHelp() {
+export function showHelp(onClose?: () => void) {
   const c = el('div', 'help');
   const g = (x: Genre) => genreTag(x);
   c.innerHTML = `
@@ -208,6 +271,7 @@ export function showHelp() {
           <li><b>Same type</b> touching? A faux pas: every painting involved scores nothing for prestige.</li>
           <li>Your <b>assistant</b> holds one tile for later. Its tile scores nothing at the end.</li>
           <li><b>Doesn't fit?</b> Give it to your assistant, swap it for a same-type museum painting that fits, or else store it as <b>excess</b> (−${RULES.excessPenalty}, and you take a 1-point decor).</li>
+          <li><b>Decor sold out?</b> Swap 2 or 3 decor tiles in a line on your wall for one longer tile, which puts the short ones back in the supply. Your points stay the same.</li>
         </ul>
       </div>
       <div>
@@ -224,8 +288,10 @@ export function showHelp() {
         </ul>
         <h3>Controls</h3>
         <p class="small">Point at your wall to preview a spot, click to pin it, click again (or press <b>Hang here</b>) to confirm. Esc unpins. Drag to look around, scroll to zoom, click any painting to look closer.</p>
+        <p class="small">Rest the pointer on a player's card to see their wall, click it to go there. Keys: <b>1</b>\u2013<b>4</b> a player's wall, <b>T</b> the table, <b>M</b> your wall, <b>G</b> every wall side by side. Click a type in the museum panel (or a museum pile on the table) to see the paintings the museum holds.</p>
+        <p class="small">With nothing pinned, Esc opens the menu. When nobody else is at the table it pauses the game, and so does switching to another tab.</p>
       </div>
     </div>
     <p class="small">This is a fan-made digital version for playing with friends, based on the board game <i>Art Society</i> by Mitch Wallace (Mighty Boards, 2023). All art here is generated by the program.</p>`;
-  modal(c, 'help-back');
+  modal(c, 'help-back', onClose);
 }

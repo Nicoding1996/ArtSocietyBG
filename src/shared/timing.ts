@@ -28,6 +28,8 @@ export function eventAnimationMs(e: GameEvent): number {
       return 1300;
     case 'decor':
       return 500;
+    case 'swapDecor':
+      return 1100;
     case 'discard':
       return 400;
     case 'museum':

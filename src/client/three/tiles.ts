@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { Decor, FrameId, Painting, Tile } from '../../shared/types';
+import type { Decor, Painting, Tile } from '../../shared/types';
 import { FRAME_WIDTH, TILE_MARGIN, artCanvas, canvasSize, type ArtKey } from '../art/generate';
+import { buildFrame } from './frames';
 import { CELL_H, CELL_W } from './layout';
-import { brass, candleWax, flame, gilt, ivory, mahogany, mirror, silver, walnut } from './materials';
+import { brass, candleWax, flame, gilt, mahogany, mirror, walnut } from './materials';
 import { cameoTexture, genreBadgeTexture, shieldsTexture, tileBackTexture, toTexture } from './textures';
 
 /** Depth of a tile's card backing; everything else sits in front of it. */
@@ -83,81 +83,7 @@ export function ring(ow: number, oh: number, iw: number, ih: number, depth: numb
   return geo;
 }
 
-interface FrameSpec {
-  depth: number;
-  bevel: number;
-  segments: number;
-  mat: () => THREE.Material;
-  /** Thin gold lip just inside the frame. */
-  lip: boolean;
-  /** Corner ornaments: radius relative to the frame width. */
-  bosses: number;
-}
-
-const FRAMES: Record<FrameId, FrameSpec> = {
-  gilded: { depth: 0.018, bevel: 0.013, segments: 3, mat: () => gilt, lip: false, bosses: 0.62 },
-  ivory: { depth: 0.016, bevel: 0.008, segments: 2, mat: () => ivory, lip: true, bosses: 0.34 },
-  silver: { depth: 0.012, bevel: 0.017, segments: 2, mat: () => silver, lip: false, bosses: 0 },
-  walnut: { depth: 0.02, bevel: 0.004, segments: 1, mat: walnut, lip: true, bosses: 0 },
-};
-
-/** Total depth of a frame in front of the backing. */
-export const frameDepth = (f: FrameId) => FRAMES[f].depth + 2 * FRAMES[f].bevel;
-/** How far in front of the backing the painted canvas sits (recessed inside the frame). */
-const artDepth = (f: FrameId) => FRAMES[f].bevel + FRAMES[f].depth * 0.25;
-
-const frameCache = new Map<string, { body: THREE.BufferGeometry; extra: THREE.BufferGeometry | null }>();
-
-function frameGeometry(frame: FrameId, ow: number, oh: number, iw: number, ih: number, fw: number) {
-  const key = `${frame}|${ow.toFixed(4)}|${oh.toFixed(4)}|${iw.toFixed(4)}|${ih.toFixed(4)}`;
-  const hit = frameCache.get(key);
-  if (hit) return hit;
-  const spec = FRAMES[frame];
-  const parts: THREE.BufferGeometry[] = [ring(ow, oh, iw, ih, spec.depth, spec.bevel, spec.segments)];
-  // Extras are gold (or dark gold) and positioned relative to the front of the backing, like the body.
-  const extras: THREE.BufferGeometry[] = [];
-  const front = spec.depth + 2 * spec.bevel;
-  if (spec.bosses > 0) {
-    const r = fw * spec.bosses;
-    for (const [sx, sy] of [
-      [-1, -1],
-      [1, -1],
-      [-1, 1],
-      [1, 1],
-    ]) {
-      const b = new THREE.SphereGeometry(r, 14, 10).toNonIndexed();
-      b.scale(1, 1, 0.55);
-      b.translate((sx * (ow - fw)) / 2, (sy * (oh - fw)) / 2, front);
-      (frame === 'gilded' ? parts : extras).push(b);
-    }
-    if (frame === 'gilded' && ow > fw * 7) {
-      // A shell at the middle of the top and bottom edges.
-      for (const sy of [-1, 1]) {
-        const s = new THREE.SphereGeometry(r * 0.75, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2).toNonIndexed();
-        s.rotateX(Math.PI / 2);
-        s.scale(1.5, 1, 0.5);
-        s.translate(0, (sy * (oh - fw)) / 2, front * 0.9);
-        parts.push(s);
-      }
-    }
-  }
-  if (spec.lip) {
-    // A thin fillet just inside the opening, tucked under the frame and overlapping the canvas edge.
-    const lip = ring(iw + fw * 0.1, ih + fw * 0.1, iw - fw * 0.26, ih - fw * 0.26, 0.003, 0.0015, 1);
-    lip.translate(0, 0, artDepth(frame) + 0.001);
-    extras.push(lip);
-  }
-  const strip = (g: THREE.BufferGeometry) => {
-    for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name);
-    return g;
-  };
-  const entry = {
-    body: mergeGeometries(parts.map(strip)) ?? parts[0],
-    extra: extras.length ? (mergeGeometries(extras.map(strip)) ?? null) : null,
-  };
-  frameCache.set(key, entry);
-  return entry;
-}
+// Each frame style is built in frames.ts.
 
 const plane = new THREE.PlaneGeometry(1, 1);
 
@@ -200,26 +126,22 @@ export function paintingMesh(p: Painting, o: TileMeshOpts = {}): THREE.Group {
   const iw = cw * CELL_H;
   const ih = ch * CELL_H;
   inner.add(backingMesh(W, H, o.backing ?? defaultBacking));
-  const spec = FRAMES[p.frame];
-  const geo = frameGeometry(p.frame, W - 2 * m, H - 2 * m, iw, ih, fw);
-  const frame = new THREE.Mesh(geo.body, spec.mat());
-  frame.position.z = BACK_D;
-  frame.castShadow = true;
-  inner.add(frame);
-  if (geo.extra) {
-    const extra = new THREE.Mesh(geo.extra, gilt);
-    extra.position.z = BACK_D;
-    inner.add(extra);
+  const frame = buildFrame(p.frame, W - 2 * m, H - 2 * m, iw, ih, fw, m);
+  for (const part of frame.parts) {
+    const mesh = new THREE.Mesh(part.geo, part.mat);
+    mesh.position.z = BACK_D;
+    mesh.castShadow = true;
+    inner.add(mesh);
   }
   const art = new THREE.Mesh(plane, canvasMaterial(p, o.urgent));
   art.scale.set(iw + 0.006, ih + 0.006, 1);
-  art.position.z = BACK_D + artDepth(p.frame);
+  art.position.z = BACK_D + frame.artZ;
   inner.add(art);
   // The type label hangs over the bottom of the frame.
   const lw = Math.min(0.13, W * 0.3);
   const label = new THREE.Mesh(plane, new THREE.MeshStandardMaterial({ map: genreBadgeTexture(p.genre), roughness: 0.5, metalness: 0.1 }));
   label.scale.set(lw, lw * 0.62, 1);
-  label.position.set(0, -H / 2 + m + fw * 0.5, BACK_D + frameDepth(p.frame) + 0.003);
+  label.position.set(0, -H / 2 + m + fw * 0.5, BACK_D + frame.front + 0.003);
   inner.add(label);
   if (o.withBack) inner.add(backPlate(p.w, p.h, 1));
   g.userData.tile = p;

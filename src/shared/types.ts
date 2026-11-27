@@ -60,12 +60,19 @@ export interface Incoming {
   from: IncomingFrom;
 }
 
+/** Decor still to be chosen from the supply. */
+export interface Reward {
+  /** The most the decor may be worth: the number of touching matching frames, or 1 for an excess painting. */
+  points: number;
+  from: 'frames' | 'excess';
+}
+
 /** A player's placement work for the current round. */
 export interface Task {
   /** Tiles waiting to be hung; the first one is being handled. */
   queue: Incoming[];
-  /** Matching-frame rewards (number of touching matches) still to be chosen from the decor supply. */
-  rewards: number[];
+  /** Decor still to be chosen from the supply, first one first. */
+  rewards: Reward[];
 }
 
 export interface PlayerState {
@@ -91,6 +98,8 @@ export interface PlayerState {
   /** Whether the player has taken a painting at this round's auction. */
   took: boolean;
   task: Task | null;
+  /** Set by the server: a bot plays this human's seat for now (they left, or are away and the room allows it). */
+  autopilot?: boolean;
 }
 
 export type Phase =
@@ -217,6 +226,10 @@ export type Action =
   | { type: 'exchange'; museum: string }
   | { type: 'excess' }
   | { type: 'decor'; shapes: DecorShape[] }
+  /** Replace the decor tiles covering this spot with one `shape` tile from the supply (only when a size has run out). */
+  | { type: 'swapDecor'; shape: DecorShape; x: number; y: number }
+  /** Go without the decor when the supply has none of that value left. */
+  | { type: 'skipDecor' }
   | { type: 'discard' }
   | { type: 'done' };
 
@@ -246,6 +259,7 @@ export type GameEvent =
   | { t: 'exchange'; pid: string; gave: Painting; got: Painting }
   | { t: 'excess'; pid: string; tile: Painting }
   | { t: 'decor'; pid: string; tiles: Decor[]; reward: number }
+  | { t: 'swapDecor'; pid: string; removed: Decor[]; tile: Decor; x: number; y: number }
   | { t: 'discard'; pid: string; tile: Decor }
   | { t: 'done'; pid: string }
   | { t: 'museum'; tile: Painting; from: number; to: number; landed: number }
@@ -261,11 +275,19 @@ export interface LobbyPlayer {
   connected: boolean;
 }
 
+export interface RoomSettings {
+  /** A bot plays for anyone disconnected for a while or sitting idle, until they are back. Off: the game waits. */
+  autopilot: boolean;
+}
+
 export interface RoomView {
   code: string;
   hostId: string;
   status: 'lobby' | 'game';
   players: LobbyPlayer[];
+  settings: RoomSettings;
+  /** The only human at the table paused the game: the bots wait. */
+  paused: boolean;
 }
 
 export type ClientMessage =
@@ -281,10 +303,14 @@ export type ClientMessage =
   | { t: 'chat'; text: string }
   | { t: 'react'; emoji: string }
   | { t: 'back' }
-  | { t: 'toLobby' };
+  | { t: 'toLobby' }
+  | { t: 'settings'; autopilot: boolean }
+  /** The host lets a bot play a disconnected player's seat until that player comes back. */
+  | { t: 'handOver'; id: string }
+  | { t: 'pause'; on: boolean };
 
 export type ServerMessage =
-  | { t: 'welcome'; serverTime: number; lan: string[] }
+  | { t: 'welcome'; serverTime: number; lan: string[]; build?: string }
   | { t: 'room'; room: RoomView; you: string; serverTime: number }
   | { t: 'game'; view: GameView; events: GameEvent[]; serverTime: number }
   | { t: 'chat'; pid: string; name: string; color: string; text: string }

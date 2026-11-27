@@ -1,5 +1,5 @@
 import { DECOR_INFO } from './content';
-import { exchangeOptions } from './engine';
+import { decorSwaps, exchangeOptions, type DecorSwap } from './engine';
 import { DECOR_SHAPES, type DecorShape, type GameState, type GameView, type Incoming, type Painting, type PlayerState } from './types';
 import { fits, gridOf } from './wall';
 
@@ -26,12 +26,19 @@ export function waitingOnView(v: GameView): string[] {
 
 /** Everything a player may legally do with their current task. Mirrors the engine's checks. */
 export interface TaskOptions {
-  /** 'decor': choose a matching-frame reward; 'tile': handle the next tile; 'finish': only the assistant is left. */
+  /** 'decor': choose decor from the supply; 'tile': handle the next tile; 'finish': only the assistant is left. */
   stage: 'decor' | 'tile' | 'finish';
   reward: number;
+  /** Why decor is being chosen: matching frames, or the 1-point tile that comes with an excess painting. */
+  rewardFrom: 'frames' | 'excess' | null;
   /** A reward of 4 or more may be split over several decor tiles. */
   multi: boolean;
+  /** Sizes in the supply that the reward may buy. */
   decorShapes: DecorShape[];
+  /** Swaps on the wall that put sold-out sizes back in the supply, most useful first. */
+  swaps: DecorSwap[];
+  /** Nothing of the reward's value is left in the supply, so the player may go without (or swap first). */
+  canSkipDecor: boolean;
   head: Incoming | null;
   headFits: boolean;
   canHangHead: boolean;
@@ -48,8 +55,10 @@ export function taskOptions(g: Pick<GameState, 'museum' | 'decor'>, p: Pick<Play
   const t = p.task;
   if (!t) return null;
   const grid = gridOf(p.wall);
-  const reward = t.rewards[0] ?? 0;
-  const free = !t.rewards.length;
+  const first = t.rewards[0] ?? null;
+  const reward = first?.points ?? 0;
+  const free = !first;
+  const decorShapes = DECOR_SHAPES.filter((s) => g.decor[s] > 0 && DECOR_INFO[s].points <= reward);
   const head = t.queue[0] ?? null;
   const headFits = !!head && fits(grid, head.tile.w, head.tile.h);
   const assistantFits = !!p.assistant && fits(grid, p.assistant.w, p.assistant.h);
@@ -58,8 +67,11 @@ export function taskOptions(g: Pick<GameState, 'museum' | 'decor'>, p: Pick<Play
   return {
     stage: !free ? 'decor' : head ? 'tile' : 'finish',
     reward,
+    rewardFrom: first?.from ?? null,
     multi: reward >= 4,
-    decorShapes: DECOR_SHAPES.filter((s) => g.decor[s] > 0 && DECOR_INFO[s].points <= reward),
+    decorShapes,
+    swaps: first ? rankSwaps(decorSwaps(g, p), reward, g.decor) : [],
+    canSkipDecor: !!first && decorShapes.length === 0,
     head,
     headFits,
     canHangHead: free && headFits,
@@ -71,4 +83,10 @@ export function taskOptions(g: Pick<GameState, 'museum' | 'decor'>, p: Pick<Play
     canDiscard: free && !!head && head.tile.kind === 'decor' && !headFits && !!p.assistant,
     canDone: free && !head,
   };
+}
+
+/** Best first: frees the most tiles the reward can buy, then the most tiles, then the target size with the most left. */
+function rankSwaps(swaps: DecorSwap[], reward: number, decor: Record<DecorShape, number>): DecorSwap[] {
+  const useful = (s: DecorSwap) => s.removed.filter((d) => s.frees.includes(d.shape) && DECOR_INFO[d.shape].points <= reward).length;
+  return swaps.sort((a, b) => useful(b) - useful(a) || b.removed.length - a.removed.length || decor[b.shape] - decor[a.shape] || a.y - b.y || a.x - b.x);
 }

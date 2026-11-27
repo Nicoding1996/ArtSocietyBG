@@ -2,13 +2,18 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { createReadStream, existsSync, statSync } from 'node:fs';
+import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { RoomManager, cleanName, type Conn } from './rooms';
+import { sharedSourceHash } from './sourceHash';
 import type { ClientMessage, ServerMessage } from '../shared/types';
 
 const PORT = Number(process.env.PORT) || 3000;
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../dist/client');
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(HERE, '../../dist/client');
+// The shared code this process loaded; the page compares it with the code it was built from.
+const BUILD = sharedSourceHash(path.resolve(HERE, '../shared'));
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -24,12 +29,28 @@ const MIME: Record<string, string> = {
   '.webmanifest': 'application/manifest+json',
 };
 
+/** True for a regular file. Never throws: a file can vanish or be locked while the client is rebuilt. */
+function isFile(file: string): boolean {
+  try {
+    return statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function serveStatic(req: http.IncomingMessage, res: http.ServerResponse) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405).end();
     return;
   }
-  const url = new URL(req.url ?? '/', 'http://localhost');
+  let url: URL;
+  try {
+    // Some request paths, such as "//", are not valid URLs and make the parser throw.
+    url = new URL(req.url ?? '/', 'http://localhost');
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Bad request.');
+    return;
+  }
   if (url.pathname === '/health') {
     res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
     return;
@@ -51,20 +72,31 @@ function serveStatic(req: http.IncomingMessage, res: http.ServerResponse) {
     res.writeHead(403).end();
     return;
   }
-  if (!existsSync(file) || statSync(file).isDirectory()) file = path.join(ROOT, 'index.html');
+  if (!isFile(file)) file = path.join(ROOT, 'index.html');
   const ext = path.extname(file).toLowerCase();
   const immutable = file.includes(`${path.sep}assets${path.sep}`);
-  res.writeHead(200, {
+  const headers = {
     'Content-Type': MIME[ext] ?? 'application/octet-stream',
     'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
-  });
+  };
   if (req.method === 'HEAD') {
-    res.end();
+    res.writeHead(200, headers).end();
     return;
   }
-  createReadStream(file).pipe(res);
+  // The headers go out once the file is open. While "vite build" rewrites dist/, a file can be missing
+  // or locked for a moment: that fails this one request instead of taking the server and its games down.
+  const stream = createReadStream(file);
+  stream.once('error', () => {
+    if (res.headersSent) return;
+    res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': '2' });
+    res.end('The game files are being updated. Reload the page in a moment.');
+  });
+  stream.once('open', () => {
+    res.writeHead(200, headers);
+    pipeline(stream, res, () => {});
+  });
 }
 
 const server = http.createServer(serveStatic);
@@ -102,7 +134,7 @@ wss.on('connection', (ws) => {
   ws.on('pong', () => (alive = true));
 
   // The network addresses let a host who opened localhost hand out an invite link that other PCs can reach.
-  send(ws, { t: 'welcome', serverTime: Date.now(), lan: lanAddresses() });
+  send(ws, { t: 'welcome', serverTime: Date.now(), lan: lanAddresses(), build: BUILD });
 
   ws.on('message', (data) => {
     if (--budget < 0) return; // flood protection

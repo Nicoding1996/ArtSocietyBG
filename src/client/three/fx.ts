@@ -34,11 +34,28 @@ interface Tween {
 /** Frame-driven tweens. `speed` > 1 fast-forwards everything (used to catch up after lag). */
 export class Tweens {
   private list: Tween[] = [];
+  /** While nothing is drawn (a hidden tab gets no frames) every tween jumps straight to its end. */
+  private instant = false;
   speed = 1;
   now = performance.now();
 
+  /** Switches instant mode; switching it on also finishes the tweens that are running. */
+  setInstant(on: boolean) {
+    this.instant = on;
+    if (on) this.flush();
+    this.now = performance.now();
+  }
+
   add(ms: number, fn: (t: number) => void, e: Ease = ease.inOut): Promise<void> {
     return new Promise((resolve) => {
+      if (this.instant) {
+        // Right after the caller's current code, as a frame would; nothing may re-add a tween forever.
+        queueMicrotask(() => {
+          fn(e(1));
+          resolve();
+        });
+        return;
+      }
       const dur = Math.max(1, ms / this.speed);
       const start = Number.isFinite(this.now) ? this.now : performance.now();
       this.list.push({ start, dur, fn, ease: e, done: resolve });

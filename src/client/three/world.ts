@@ -62,6 +62,24 @@ interface Label {
   rise: number;
 }
 
+/** A figurine stands this far out from its wall (see World.pawnHome) and is about this tall. */
+const FIGURINE = { out: ROOM - 0.06 - (TABLE_R + 0.75), top: 1.6 };
+/** The chandelier's lowest crystals (see Room.buildChandelier): their height, and how far out from a wall the nearest hang. */
+const CRYSTALS = { low: 4.97, out: ROOM - 0.06 - 1.1 };
+
+/**
+ * Camera height for looking square at a wall from `d` away while the band from `bottom` to `top`
+ * is framed. Level with the middle of the band, unless from far back that would show the chandelier
+ * across the top of the picture or a figurine in front of the bottom: then as close to the middle as
+ * avoids them (the figurine wins if both can't be avoided).
+ */
+export function wallCameraHeight(bottom: number, top: number, d: number): number {
+  const mid = (bottom + top) / 2;
+  const low = d > FIGURINE.out ? bottom + ((FIGURINE.top + 0.1 - bottom) * d) / FIGURINE.out : -Infinity;
+  const high = d > CRYSTALS.out ? top - ((top - (CRYSTALS.low - 0.25)) * d) / CRYSTALS.out : Infinity;
+  return Math.max(low, Math.min(mid, high));
+}
+
 function rankTexture(n: number): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -180,7 +198,10 @@ export class World {
       if (this.placement && !this.pinned) this.walls.get(this.placement.pid)?.clearGhost();
     });
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.pinned) this.unpin();
+      if (e.key !== 'Escape' || !this.pinned || e.defaultPrevented) return;
+      this.unpin();
+      // Used up: the game's menu does not open on the same key press.
+      e.preventDefault();
     });
     this.ready = this.build();
     requestAnimationFrame(this.frame);
@@ -249,6 +270,7 @@ export class World {
     this.bloom.resolution.set(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.applyLens();
   }
 
   // ---------- seats ----------
@@ -328,22 +350,48 @@ export class World {
 
   private camToken = 0;
 
-  /** Glides the camera; a newer move (or the person grabbing the camera) cancels an older one. */
-  private moveCamera(target: THREE.Vector3, position: THREE.Vector3, ms: number): Promise<void> {
+  /**
+   * Glides the camera; a newer move (or the person grabbing the camera) cancels an older one. `lens`
+   * is the lens shift to end with (see setLens); views that don't give one return to none.
+   */
+  private moveCamera(target: THREE.Vector3, position: THREE.Vector3, ms: number, lens = new THREE.Vector2()): Promise<void> {
     const c = this.controls;
     const fromT = c.target.clone();
     const fromP = this.camera.position.clone();
+    const fromL = this.lens.clone();
     const token = ++this.camToken;
     if (ms <= 0) {
       c.target.copy(target);
       this.camera.position.copy(position);
+      this.setLens(lens);
       return Promise.resolve();
     }
+    const l = new THREE.Vector2();
     return this.tw.add(ms, (t) => {
       if (token !== this.camToken) return;
       c.target.lerpVectors(fromT, target, t);
       this.camera.position.lerpVectors(fromP, position, t);
+      this.setLens(l.lerpVectors(fromL, lens, t));
     });
+  }
+
+  /** Where the middle of the picture sits, in screen pixels from the centre of the window. */
+  private lens = new THREE.Vector2();
+
+  /**
+   * Shifts the picture by `v` screen pixels without turning or moving the camera, like a shift lens.
+   * It puts a wall in the part of the screen the HUD leaves open while the camera stays square to it.
+   */
+  private setLens(v: THREE.Vector2) {
+    this.lens.copy(v);
+    this.applyLens();
+  }
+
+  private applyLens() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (Math.abs(this.lens.x) < 0.5 && Math.abs(this.lens.y) < 0.5) this.camera.clearViewOffset();
+    else this.camera.setViewOffset(w, h, -this.lens.x, -this.lens.y, w, h);
   }
 
   /** Whether the person has moved the camera themselves in the last few seconds. */
@@ -351,22 +399,28 @@ export class World {
     return performance.now() - this.lastUser < 4000;
   }
 
-  /** Frames a rectangle of the wall plane inside the screen area the HUD leaves open. */
-  private frameRect(wall: GalleryWall, centerY: number, needW: number, needH: number, ms: number) {
+  /**
+   * Frames the band of the wall between heights `bottom` and `top` (and `needW` wide) inside the screen
+   * area the HUD leaves open. The camera looks square at the wall and a lens shift moves the picture
+   * into the open space, so a tall panel at the bottom no longer drags the camera down under the table.
+   */
+  private frameRect(wall: GalleryWall, bottom: number, top: number, needW: number, ms: number) {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const ins = this.insets;
     const freeW = Math.max(200, w - ins.left - ins.right);
     const freeH = Math.max(200, h - ins.top - ins.bottom);
     const tan = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-    const d = (Math.max(needH / freeH, needW / freeW) * h) / (2 * tan);
+    const d = Math.min((Math.max((top - bottom) / freeH, needW / freeW) * h) / (2 * tan), ROOM * 2 - 0.8);
+    const y = wallCameraHeight(bottom, top, d);
+    // The orbit controls never let the camera look quite level, so aim a touch below its own height.
+    const aim = y - d * Math.tan(Math.PI / 2 - this.controls.maxPolarAngle + 0.004);
     const ppu = h / (2 * d * tan);
-    const ox = ins.left + freeW / 2 - w / 2;
-    const oy = ins.top + freeH / 2 - h / 2;
-    const center = new THREE.Vector3(-ox / ppu, centerY + oy / ppu, 0);
-    const target = wall.toWorld(center);
-    const position = wall.toWorld(center.clone().setZ(Math.min(d, ROOM * 2 - 0.8)));
-    return this.moveCamera(target, position, ms);
+    // Where the middle of the band should land on screen, measured from the camera's own centre line.
+    const lens = new THREE.Vector2(ins.left + freeW / 2 - w / 2, ins.top + freeH / 2 - h / 2 + ((bottom + top) / 2 - aim) * ppu);
+    const target = wall.toWorld(new THREE.Vector3(0, aim, 0));
+    const position = wall.toWorld(new THREE.Vector3(0, y, d));
+    return this.moveCamera(target, position, ms, lens);
   }
 
   viewWall(pid: string, tight = false, ms = 1100): Promise<void> {
@@ -374,14 +428,9 @@ export class World {
     if (!wall) return Promise.resolve();
     this.view = { kind: 'wall', pid, tight };
     this.demoSpin = false;
-    if (tight) {
-      const bottom = GRID_BOTTOM - MARGIN_Y - 0.05;
-      const top = GRID_TOP + MARGIN_Y + 0.05;
-      return this.frameRect(wall, (bottom + top) / 2, PANEL_W + 0.1, top - bottom, ms);
-    }
-    const bottom = GRID_BOTTOM - MARGIN_Y - 0.2;
-    const top = GRID_TOP + 0.85;
-    return this.frameRect(wall, (bottom + top) / 2, PANEL_W + 2.6, top - bottom + 0.2, ms);
+    if (tight) return this.frameRect(wall, GRID_BOTTOM - MARGIN_Y - 0.05, GRID_TOP + MARGIN_Y + 0.05, PANEL_W + 0.1, ms);
+    // Room for the name plate above and the assistant's easel and excess paintings at the sides.
+    return this.frameRect(wall, GRID_BOTTOM - MARGIN_Y - 0.3, GRID_TOP + 0.95, PANEL_W + 2.6, ms);
   }
 
   /**

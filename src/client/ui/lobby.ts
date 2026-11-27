@@ -20,6 +20,7 @@ export class LobbyView {
   private list = el('div', 'lobby-players');
   private controls = el('div', 'lobby-controls');
   private look = el('div', 'lobby-look');
+  private rules = el('div', 'lobby-rules');
 
   constructor(
     private send: (m: ClientMessage) => void,
@@ -27,8 +28,10 @@ export class LobbyView {
     private onHelp: () => void,
     chat: ChatPanel,
   ) {
-    this.card.innerHTML = `<div class="lobby-head"></div>`;
-    this.card.append(this.list, this.look, this.controls);
+    // Everything above the buttons scrolls on a short window, so "Open the salon" stays in view.
+    const scroll = el('div', 'lobby-scroll', `<div class="lobby-head"></div>`);
+    scroll.append(this.list, this.look, this.rules);
+    this.card.append(scroll, this.controls);
     const side = el('div', 'lobby-side');
     side.appendChild(chat.root);
     this.root.append(this.card, side);
@@ -93,6 +96,22 @@ export class LobbyView {
       name.addEventListener('keydown', (e) => e.key === 'Enter' && name.blur());
       this.look.querySelectorAll<HTMLButtonElement>('.swatch').forEach((b) => b.addEventListener('click', () => this.send({ t: 'profile', color: b.dataset.c })));
       this.look.querySelectorAll<HTMLButtonElement>('.hat').forEach((b) => b.addEventListener('click', () => this.send({ t: 'profile', hat: b.dataset.h as (typeof HATS)[number] })));
+    });
+
+    renderIf(this.rules, JSON.stringify([room.settings, isHost]), () => {
+      const on = room.settings.autopilot;
+      this.rules.innerHTML = `
+        <label class="setting ${isHost ? '' : 'locked'}" title="${isHost ? '' : 'Only the host can change this. '}A player who leaves the game is always replaced by a bot.">
+          <input type="checkbox" class="s-autopilot" ${on ? 'checked' : ''} ${isHost ? '' : 'disabled'} />
+          <span class="switch" aria-hidden="true"></span>
+          <span class="s-text"><b>Autopilot for away players: ${on ? 'on' : 'off'}</b>
+            <small>${
+              on
+                ? 'A bot plays for anyone disconnected for 20 seconds or idle for 2 minutes, until they are back.'
+                : 'The game waits for anyone disconnected. The host can let a bot play their seat until they are back.'
+            }</small></span>
+        </label>`;
+      this.rules.querySelector<HTMLInputElement>('.s-autopilot')!.addEventListener('change', (e) => this.send({ t: 'settings', autopilot: (e.target as HTMLInputElement).checked }));
     });
 
     renderIf(this.controls, JSON.stringify([isHost, room.players.length]), () => {
