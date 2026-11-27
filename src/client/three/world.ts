@@ -52,6 +52,23 @@ export interface Placement {
   onHover?: (spot: { x: number; y: number; valid: boolean } | null) => void;
   onPin?: (spot: { x: number; y: number } | null) => void;
   onCommit?: (spot: { x: number; y: number }) => void;
+  /** A tile already on the wall that is being moved: it is lifted off while the placement lasts. */
+  lift?: string;
+  /** Esc with nothing pinned. */
+  onCancel?: () => void;
+}
+
+/** Tiles on one wall that a click picks up (to move them). */
+interface Movable {
+  pid: string;
+  ids: Set<string>;
+  onPick: (id: string) => void;
+}
+
+/** Highlights, ghosts and lifted tiles: never what the pointer is pointing at. */
+function passThrough(o: THREE.Object3D | null): boolean {
+  for (let q = o; q; q = q.parent) if (q.userData.overlay || !q.visible) return true;
+  return false;
 }
 
 interface Label {
@@ -118,6 +135,7 @@ export class World {
   private hoverAt = 0;
   private downAt: { x: number; y: number } | null = null;
   private placement: Placement | null = null;
+  private movable: Movable | null = null;
   private pinned: { x: number; y: number } | null = null;
   private lastSpot: { x: number; y: number; valid: boolean } | null = null;
   private podiumGroup: THREE.Group | null = null;
@@ -198,8 +216,10 @@ export class World {
       if (this.placement && !this.pinned) this.walls.get(this.placement.pid)?.clearGhost();
     });
     window.addEventListener('keydown', (e) => {
-      if (e.key !== 'Escape' || !this.pinned || e.defaultPrevented) return;
-      this.unpin();
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (this.pinned) this.unpin();
+      else if (this.placement?.onCancel) this.placement.onCancel();
+      else return;
       // Used up: the game's menu does not open on the same key press.
       e.preventDefault();
     });
@@ -545,6 +565,7 @@ export class World {
     roots.push(this.table.group);
     const hits = this.raycaster.intersectObjects(roots, true);
     for (const h of hits) {
+      if (passThrough(h.object)) continue;
       let o: THREE.Object3D | null = h.object;
       while (o && !o.userData.tile) o = o.parent;
       if (o) {
@@ -568,6 +589,18 @@ export class World {
     this.hoverAt = now;
     this.setPointer(e);
     const pl = this.placement;
+    // A tile hung this round under the pointer can be picked up, even while another is being placed.
+    const hit = this.movable || !pl ? this.tileUnder() : null;
+    const pick = this.pickable(hit);
+    if (pl && pick) {
+      this.canvas.style.cursor = 'grab';
+      if (!this.pinned) {
+        this.walls.get(pl.pid)?.clearGhost();
+        if (this.lastSpot) pl.onHover?.(null);
+        this.lastSpot = null;
+      }
+      return;
+    }
     if (pl) {
       const cell = this.gridHit(pl.pid);
       const wall = this.walls.get(pl.pid)!;
@@ -592,8 +625,7 @@ export class World {
       return;
     }
     if (!this.onTileHover) return;
-    const hit = this.tileUnder();
-    this.canvas.style.cursor = hit ? 'zoom-in' : '';
+    this.canvas.style.cursor = pick ? 'grab' : hit ? 'zoom-in' : '';
     this.onTileHover(hit?.tile ?? null, hit?.owner ?? null, e.clientX, e.clientY);
   }
 
@@ -602,6 +634,11 @@ export class World {
     this.downAt = null;
     if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
     this.setPointer(e);
+    const pick = this.movable ? this.pickable(this.tileUnder()) : null;
+    if (pick) {
+      this.movable?.onPick(pick);
+      return;
+    }
     const pl = this.placement;
     if (pl) {
       const cell = this.gridHit(pl.pid);
@@ -642,12 +679,24 @@ export class World {
     const same = this.placement && this.placement.pid === pl.pid && this.placement.tile.id === pl.tile.id && this.placement.mode === pl.mode;
     const keepPin = same && this.pinned && pl.spots.some((s) => s.x === this.pinned!.x && s.y === this.pinned!.y) ? this.pinned : null;
     if (this.placement && !same) this.walls.get(this.placement.pid)?.clearGhost();
+    if (this.placement && this.placement.pid !== pl.pid) this.walls.get(this.placement.pid)?.setLifted(null);
+    // The panel redraws the same placement whenever anything changes: what the spot under the pointer
+    // would do (or the pinned one) is told again, so its new info line is not left blank.
+    const hover = same && !keepPin && this.lastSpot ? { ...this.lastSpot, valid: pl.spots.some((s) => s.x === this.lastSpot!.x && s.y === this.lastSpot!.y) } : null;
+    // A tile's tooltip from before (say the tile just picked up to move) would linger over the panel.
+    if (!this.placement) this.onTileHover?.(null, null, 0, 0);
     this.placement = pl;
     this.pinned = keepPin;
-    if (!keepPin) this.lastSpot = null;
+    this.lastSpot = hover;
     const wall = this.walls.get(pl.pid);
+    wall?.setLifted(pl.lift ?? null);
     wall?.showSpots(pl.spots, pl.tile.w, pl.tile.h);
     if (wall && keepPin) wall.setGhost(pl.tile, keepPin.x, keepPin.y, pl.mode === 'preview' ? 'preview' : 'pinned');
+    if (keepPin) pl.onHover?.({ ...keepPin, valid: true });
+    else if (hover) {
+      wall?.setGhost(pl.tile, hover.x, hover.y, !hover.valid ? 'bad' : pl.mode === 'preview' ? 'preview' : 'ok');
+      pl.onHover?.(hover);
+    }
   }
 
   stopPlacement() {
@@ -655,10 +704,26 @@ export class World {
     const wall = this.walls.get(this.placement.pid);
     wall?.clearGhost();
     wall?.showSpots(null);
+    wall?.setLifted(null);
     this.placement = null;
     this.pinned = null;
     this.lastSpot = null;
     this.canvas.style.cursor = '';
+  }
+
+  /** Tiles on a wall that a click picks up, outlined so they stand out (null: none). */
+  setMovable(m: { pid: string; ids: string[]; onPick: (id: string) => void } | null) {
+    const before = this.movable?.pid;
+    this.movable = m && m.ids.length ? { pid: m.pid, ids: new Set(m.ids), onPick: m.onPick } : null;
+    if (before && before !== this.movable?.pid) this.walls.get(before)?.showMovable([]);
+    if (this.movable) this.walls.get(this.movable.pid)?.showMovable(m!.ids);
+  }
+
+  /** The tile under the pointer if a click would pick it up to move it (the one being moved does not count). */
+  private pickable(hit: { tile: Tile; owner: string | null } | null): string | null {
+    const m = this.movable;
+    if (!m || !hit || hit.owner !== m.pid || !m.ids.has(hit.tile.id) || hit.tile.id === this.placement?.lift) return null;
+    return hit.tile.id;
   }
 
   placingTile(): string | null {

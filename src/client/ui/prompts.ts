@@ -1,7 +1,8 @@
 import { DECOR_INFO, GENRE_INFO, PAINTING_SIZES, RULES, decorList, sizeKey } from '../../shared/content';
 import { taskOptions } from '../../shared/options';
-import { DECOR_SHAPES, type Action, type DecorShape, type GameView, type Genre, type Painting, type PlayerView, type Tile } from '../../shared/types';
-import { cornersCovered, coversStar, fits, gridOf, legalSpots, matchingFrames, overlapsEyeline, sameGenre, starterSpots } from '../../shared/wall';
+import { ranking, scoreWall } from '../../shared/scoring';
+import { DECOR_SHAPES, type Action, type DecorShape, type GameView, type Genre, type Hung, type Painting, type PlayerView, type Tile } from '../../shared/types';
+import { cornersCovered, coversStar, fits, gridOf, legalSpots, matchingFrames, moveSpots, overlapsEyeline, sameGenre, starterSpots } from '../../shared/wall';
 import { el, esc, ordinal, renderIf } from './dom';
 import { icon } from './icons';
 import { disc, dot, genreTag, shieldsHtml, sizeShape, sizeText, tileCard, tileName } from './parts';
@@ -18,6 +19,10 @@ export interface PlaceRequest {
   onHover: (spot: (Spot & { valid: boolean }) | null) => void;
   onPin: (spot: Spot | null) => void;
   onCommit: (spot: Spot) => void;
+  /** Moving a tile already on the wall: it is lifted off while the ghost shows where it would go. */
+  lift?: string;
+  /** Esc with no spot pinned. */
+  onCancel?: () => void;
 }
 
 export interface PromptHost {
@@ -27,6 +32,8 @@ export interface PromptHost {
   pinned(): Spot | null;
   unpin(): void;
   marks(matches: string[], faux: string[]): void;
+  /** Tiles on my wall that a click picks up to move (null for none). */
+  movable(ids: string[] | null, onPick: (id: string) => void): void;
   /** Looks at your own wall (used when you start choosing a painting). */
   lookAtMyWall(): void;
   /** Opens the folded panel again while a wall stays on screen. */
@@ -42,10 +49,12 @@ interface Local {
   lot: string | null;
   which: 'new' | 'assistant';
   decor: DecorShape[];
+  /** The tile hung this round that is being moved. */
+  moving: string | null;
   pending: boolean;
 }
 
-const fresh = (key: string): Local => ({ key, sizes: [], bid: null, lot: null, which: 'new', decor: [], pending: false });
+const fresh = (key: string): Local => ({ key, sizes: [], bid: null, lot: null, which: 'new', decor: [], moving: null, pending: false });
 
 /**
  * Where a painting with no room on a player's wall could still go: the assistant (free now, or once the
@@ -67,6 +76,8 @@ export class Prompts {
   private info: HTMLElement | null = null;
   /** True while hovering the decor swap button outlines tiles on my wall. */
   private swapMarked = false;
+  /** Tiles a click on my wall picks up to move, collected while the panel is drawn. */
+  private movableIds: string[] | null = null;
   folded = false;
 
   constructor(private host: PromptHost) {}
@@ -90,6 +101,21 @@ export class Prompts {
     this.root.dataset.sig = '';
     this.root.className = 'prompt';
     this.host.stopPlace();
+    this.host.movable(null, () => undefined);
+  }
+
+  /** Picks up a tile hung this round to move it. */
+  private startMove(id: string) {
+    if (this.local.pending) return;
+    this.local.moving = id;
+    this.host.unpin();
+    this.rerender();
+  }
+
+  private cancelMove() {
+    this.local.moving = null;
+    this.host.unpin();
+    this.rerender();
   }
 
   private rerender() {
@@ -112,7 +138,8 @@ export class Prompts {
     this.me = me;
     const p = v.players.find((x) => x.id === me);
     const ph = v.phase;
-    const taskSig = p ? JSON.stringify([p.task, p.assistant?.id, p.starter?.id, p.wall.length]) : '';
+    // Where every tile hangs, so a move (which leaves the task as it was) still starts the panel afresh.
+    const taskSig = p ? JSON.stringify([p.task, p.assistant?.id, p.starter?.id, p.wall.map((h) => h.x * 100 + h.y)]) : '';
     const key = `${ph.kind}:${v.round}:${taskSig}:${ph.kind === 'acquire' ? ph.next : ''}`;
     if (key !== this.local.key) this.local = fresh(key);
     if (!p || ph.kind === 'over') return this.hide();
@@ -123,6 +150,7 @@ export class Prompts {
       this.root.className = `prompt ${L.pending ? 'pending' : ''} ${this.folded ? 'folded' : ''}`;
       this.root.innerHTML = '';
       this.info = null;
+      this.movableIds = null;
       let placing = false;
       switch (ph.kind) {
         case 'setup':
@@ -139,6 +167,7 @@ export class Prompts {
           break;
       }
       if (!placing) this.host.stopPlace();
+      this.host.movable(L.pending ? null : this.movableIds, (id) => this.startMove(id));
       for (const side of this.root.querySelectorAll('.task-side')) if (!side.childElementCount) side.remove();
       for (const body of this.root.querySelectorAll<HTMLElement>('.pr-body')) this.watchOverflow(body);
       if (this.folded) {
@@ -202,19 +231,33 @@ export class Prompts {
   }
 
   /** Placement on my own wall with live feedback about the spot under the pointer. */
-  private place(v: GameView, p: PlayerView, tile: Tile, spots: Spot[], mode: 'place' | 'preview', commit: (s: Spot) => void) {
+  private place(
+    v: GameView,
+    p: PlayerView,
+    tile: Tile,
+    spots: Spot[],
+    mode: 'place' | 'preview',
+    commit: (s: Spot) => void,
+    move?: { onCancel: () => void },
+  ) {
     if (this.local.pending) return;
     this.host.place({
       tile,
       spots,
       mode,
-      onHover: (s) => this.showSpotInfo(v, p, tile, s),
+      onHover: (s) => this.showSpotInfo(v, p, tile, s, !!move),
       onPin: () => this.rerender(),
       onCommit: (s) => commit(s),
+      lift: move ? tile.id : undefined,
+      onCancel: move?.onCancel,
     });
   }
 
-  private showSpotInfo(v: GameView, p: PlayerView, tile: Tile, s: (Spot & { valid: boolean }) | null) {
+  /**
+   * What hanging `tile` at the spot would do: frames it matches, faux pas, the eyeline, corners, and the
+   * score before and after. `moving` means the tile is already on the wall and is being moved.
+   */
+  private showSpotInfo(v: GameView, p: PlayerView, tile: Tile, s: (Spot & { valid: boolean }) | null, moving = false) {
     if (!this.info) return;
     if (!s) {
       this.info.innerHTML = '';
@@ -222,26 +265,31 @@ export class Prompts {
       return;
     }
     if (!s.valid) {
-      this.info.innerHTML = `<span class="chip bad">${icon('close')} Not here: tiles must touch another tile along an edge and stay on empty space</span>`;
+      this.info.innerHTML = moving
+        ? `<span class="chip bad">${icon('close')} Not here: it must stay on empty space, touching another tile, and every tile must still touch the rest of the wall</span>`
+        : `<span class="chip bad">${icon('close')} Not here: tiles must touch another tile along an edge and stay on empty space</span>`;
       this.host.marks([], []);
       return;
     }
-    const chips: string[] = [];
+    const wall = moving ? p.wall.filter((h) => h.tile.id !== tile.id) : p.wall;
+    const after: Hung[] = [...wall, { tile, x: s.x, y: s.y }];
+    const chips: string[] = [scoreChip(v, p, after)];
     let matches: string[] = [];
     let faux: string[] = [];
     if (v.phase.kind === 'setup') {
       if (coversStar(tile.w, tile.h, s.x, s.y)) chips.push(`<span class="chip good">${icon('star')} Covers a star</span>`);
     } else if (tile.kind === 'painting') {
-      const grid = gridOf(p.wall);
-      matches = matchingFrames(p.wall, grid, tile, s.x, s.y);
-      faux = sameGenre(p.wall, grid, tile, s.x, s.y);
-      if (matches.length) chips.push(`<span class="chip gold">${icon('frame')} ${matches.length} matching frame${matches.length === 1 ? '' : 's'}: decor worth up to ${matches.length}</span>`);
+      const grid = gridOf(wall);
+      matches = matchingFrames(wall, grid, tile, s.x, s.y);
+      faux = sameGenre(wall, grid, tile, s.x, s.y);
+      const n = matches.length;
+      if (n && moving) chips.push(`<span class="chip">${icon('frame')} ${n} matching frame${n === 1 ? '' : 's'}, but a move earns no decor</span>`);
+      else if (n) chips.push(`<span class="chip gold">${icon('frame')} ${n} matching frame${n === 1 ? '' : 's'}: decor worth up to ${n}</span>`);
       if (faux.length) chips.push(`<span class="chip bad">${icon('close')} Faux pas: touches ${faux.length === 1 ? 'another' : faux.length} ${esc(GENRE_INFO[tile.genre].name)}${faux.length === 1 ? '' : 's'}, they won't score</span>`);
       if (overlapsEyeline(s.y, tile.h)) chips.push(`<span class="chip">${icon('eye')} In the eyeline</span>`);
     }
     const corners = cornersCovered(tile.w, tile.h, s.x, s.y);
     if (corners) chips.push(`<span class="chip good">Covers ${corners === 1 ? 'a corner' : `${corners} corners`}</span>`);
-    if (!chips.length) chips.push(`<span class="chip">${icon('check')} A fine spot</span>`);
     this.info.innerHTML = chips.join('');
     this.host.marks(matches, faux);
   }
@@ -257,8 +305,20 @@ export class Prompts {
     const pin = this.host.pinned();
     if (pin) {
       acts.appendChild(this.button(`${icon('check')} ${label}`, 'primary', () => this.commitPinned()));
-      acts.appendChild(this.button('Move', 'ghost', () => this.host.unpin()));
-    } else acts.insertAdjacentHTML('afterbegin', `<span class="pr-hint">Point at your wall, click to pin a spot, click it again to hang.</span>`);
+      acts.appendChild(this.button('Another spot', 'ghost', () => this.host.unpin()));
+    } else acts.insertAdjacentHTML('afterbegin', `<span class="pr-hint">Point at your wall, click to pin a spot, click it again to ${label === 'Hang here' ? 'hang' : 'confirm'}.</span>`);
+  }
+
+  /** The line saying which tiles hung this round can still move, when some can. */
+  private movesHint(box: HTMLElement, ids: string[], p: PlayerView) {
+    if (!ids.length) return;
+    this.movableIds = ids;
+    const one = ids.length === 1 ? p.wall.find((h) => h.tile.id === ids[0])?.tile : null;
+    const what = one
+      ? `${one.kind === 'painting' ? `\u201c${esc(one.title)}\u201d` : `the ${esc(DECOR_INFO[one.shape].name.toLowerCase())}`} until you press Done: click it on your wall`
+      : `the ${ids.length} tiles you hung this round until you press Done: click one on your wall`;
+    const kept = p.task?.locked?.length ? ' Paintings that earned decor stay put.' : '';
+    box.appendChild(el('div', 'pr-hint moves-hint', `${icon('swap')}<span>You can still move ${what}.${kept}</span>`));
   }
 
   private commitHandler: ((s: Spot) => void) | null = null;
@@ -571,14 +631,30 @@ export class Prompts {
       return false;
     }
 
+    // Rearranging: a tile hung this round is picked up and goes to a new spot.
+    if (L.moving) {
+      if (opt.moves.includes(L.moving)) return this.renderMove(v, p, L.moving, opt.moves);
+      L.moving = null;
+    }
+
     if (opt.stage === 'finish') {
-      const a = p.assistant!;
+      const a = opt.canHangAssistant ? p.assistant : null;
+      if (!a) {
+        // Only moves are left: the round waits until the player says they are finished.
+        const box = this.box('task done-step', `${icon('check')} Everything is hung`, 'Finished with your wall for this round?');
+        this.movesHint(box, opt.moves, p);
+        const acts = el('div', 'pr-actions');
+        acts.appendChild(this.button(`${icon('check')} Done for this round`, 'primary', () => this.send({ type: 'done' })));
+        this.foot(box).appendChild(acts);
+        return false;
+      }
       const box = this.box('task', `${icon('assistant')} Your assistant`, 'Hang the tile your assistant is holding?', 'Or keep it for a later round. A tile still held at the end scores nothing.');
       const row = el('div', 'task-row');
       row.appendChild(tileCard(a));
       const side = el('div', 'task-side');
       row.appendChild(side);
       box.appendChild(row);
+      this.movesHint(box, opt.moves, p);
       this.infoLine(this.foot(box));
       const acts = el('div', 'pr-actions');
       this.foot(box).appendChild(acts);
@@ -661,6 +737,43 @@ export class Prompts {
       );
     }
     if (head.tile.kind === 'painting' && !usingAssistant) side.prepend(el('div', 'pr-hint tight', `${genreTag(head.tile.genre)} Avoid touching another ${esc(GENRE_INFO[head.tile.genre].name)}. Match its frame for decor.`));
+    this.movesHint(box, opt.moves, p);
     return placing;
   }
+
+  /** Moving a tile hung this round to another spot on the wall. */
+  private renderMove(v: GameView, p: PlayerView, id: string, moves: string[]): boolean {
+    const h = p.wall.find((x) => x.tile.id === id)!;
+    const t = h.tile;
+    const box = this.box(
+      'task',
+      `${icon('swap')} Rearranging`,
+      t.kind === 'painting' ? `Move \u201c${esc(t.title)}\u201d` : `Move the ${esc(DECOR_INFO[t.shape].name.toLowerCase())}`,
+      t.kind === 'painting' ? 'A move never earns decor, even beside a matching frame.' : '',
+    );
+    const row = el('div', 'task-row');
+    row.appendChild(tileCard(t));
+    box.appendChild(row);
+    this.infoLine(this.foot(box));
+    const acts = el('div', 'pr-actions');
+    this.foot(box).appendChild(acts);
+    const commit = (sp: Spot) => this.send({ type: 'move', tile: id, x: sp.x, y: sp.y });
+    this.commitHandler = commit;
+    this.pinnedActions(acts, 'Move here');
+    acts.appendChild(this.button('Cancel', 'ghost', () => this.cancelMove()));
+    // Another of this round's tiles can be picked up instead.
+    this.movableIds = moves.filter((m) => m !== id);
+    this.place(v, p, t, moveSpots(p.wall, id), 'place', commit, { onCancel: () => this.cancelMove() });
+    return true;
+  }
+}
+
+/** The score if the evening ended now, as the wall is and with a tile at the spot under the pointer. */
+function scoreChip(v: GameView, p: PlayerView, after: Hung[]): string {
+  const rank = ranking(v.prestige);
+  const was = scoreWall({ id: p.id, wall: p.wall, excess: p.excess, hand: null }, rank).total;
+  const now = scoreWall({ id: p.id, wall: after, excess: p.excess, hand: null }, rank).total;
+  const d = now - was;
+  const tip = `Your score if the evening ended now: ${was} as your wall is, ${now} with it here${d ? ` (${d > 0 ? '+' : ''}${d})` : ''}`;
+  return `<span class="chip score ${d > 0 ? 'good' : d < 0 ? 'bad' : ''}" title="${tip}">${icon('laurel')} ${was} \u2192 <b>${now}</b></span>`;
 }

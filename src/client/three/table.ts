@@ -4,7 +4,7 @@ import { GENRES, type Genre, type Painting } from '../../shared/types';
 import { ease, type Tweens } from './fx';
 import { CELL_H, CELL_W, TABLE_R, TABLE_TOP, outward, type Side } from './layout';
 import { baize, brass, darkGold, gold, mahogany } from './materials';
-import { MUSEUM, discTexture, labelTexture, museumTexture, toTexture, trackPos } from './textures';
+import { MUSEUM, brassPlateTexture, discTexture, labelTexture, museumTexture, toTexture, trackPos } from './textures';
 import { backMesh, paintingMesh } from './tiles';
 import { loadedIcon } from '../ui/icons';
 
@@ -132,7 +132,6 @@ export class Table {
   private gavel = new THREE.Group();
   private gavelSide: Side | null = null;
   private supplyLabel: THREE.Sprite;
-  private supplyCount = -1;
   private t = 0;
 
   constructor() {
@@ -200,7 +199,8 @@ export class Table {
       const pile = new THREE.Group();
       const [px, pz] = PILE_AT[genre];
       pile.position.set(px, TABLE_TOP + 0.002, pz);
-      const label = this.makeSprite('0', color);
+      const label = this.makePlate();
+      this.setPlate(label, `${GENRE_INFO[genre].short} \u00b7 0`, genre);
       label.position.set(0, 0.42, 0);
       pile.add(label);
       g.add(pile);
@@ -225,24 +225,30 @@ export class Table {
     });
     crate.position.set(0, TABLE_TOP, -2.05);
     g.add(crate);
-    this.supplyLabel = this.makeSprite('Supply', '#e2c27a');
+    this.supplyLabel = this.makePlate();
+    this.setPlate(this.supplyLabel, 'Supply');
     this.supplyLabel.position.set(0, TABLE_TOP + 0.5, -2.05);
     g.add(this.supplyLabel);
 
     this.buildGavel();
   }
 
-  private makeSprite(text: string, color: string): THREE.Sprite {
-    const tex = toTexture(labelTexture(text, { w: 256, h: 96, bg: '#1a1410', fg: color, size: 54 }));
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true }));
-    s.scale.set(0.5, 0.19, 1);
+  /** A brass plate floating over a pile, always turned to the camera so it reads from every seat. */
+  private makePlate(): THREE.Sprite {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ depthWrite: false, transparent: true }));
+    s.scale.set(0.62, 0.177, 1);
     return s;
   }
 
-  private setSpriteText(s: THREE.Sprite, text: string, color: string) {
+  /** Engraves the plate again when its text changes, or once the font or the type's icon it needs has loaded. */
+  private setPlate(s: THREE.Sprite, text: string, genre?: Genre) {
+    const ready = `${document.fonts.check('700 66px "Cormorant Garamond"')}|${!genre || !!loadedIcon(genre, '#16120e', 128, 2.2)}`;
+    const key = `${text}|${ready}`;
+    if (s.userData.plate === key) return;
+    s.userData.plate = key;
     const mat = s.material as THREE.SpriteMaterial;
     mat.map?.dispose();
-    mat.map = toTexture(labelTexture(text, { w: 256, h: 96, bg: '#1a1410', fg: color, size: 54 }));
+    mat.map = toTexture(brassPlateTexture(text, genre ? { color: GENRE_INFO[genre].color, icon: genre } : undefined));
     mat.needsUpdate = true;
   }
 
@@ -353,7 +359,7 @@ export class Table {
         });
         pile.ids = ids;
       }
-      this.setSpriteText(pile.label, `${GENRE_INFO[g].short} \u00b7 ${list.length}`, GENRE_INFO[g].color);
+      this.setPlate(pile.label, `${GENRE_INFO[g].short} \u00b7 ${list.length}`, g);
       pile.label.visible = true;
     }
   }
@@ -364,9 +370,8 @@ export class Table {
   }
 
   setSupply(count: number) {
-    if (count === this.supplyCount) return;
-    this.supplyCount = count;
-    this.setSpriteText(this.supplyLabel, `Supply \u00b7 ${count}`, '#e2c27a');
+    // setPlate skips the work when nothing changed, and catches the font arriving after the first count.
+    this.setPlate(this.supplyLabel, `Supply \u00b7 ${count}`);
   }
 
   supplyWorld(): THREE.Vector3 {

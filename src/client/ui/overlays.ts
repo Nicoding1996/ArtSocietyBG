@@ -267,6 +267,7 @@ export function showHelp(onClose?: () => void) {
         <h3>Hanging</h3>
         <ul>
           <li>Inside the grid, touching another tile along an edge (corners don't count), never turned sideways.</li>
+          <li><b>Until you press Done</b>, you may move the tiles you hung this round (they show a dashed outline). Tiles from earlier rounds stay put, and so do paintings in a frame match that earned decor. A move never earns decor.</li>
           <li><b>Same frame</b> as a painting it touches? Take decor worth up to the number of matching neighbours (4 or more: several decor tiles adding up to that).</li>
           <li><b>Same type</b> touching? A faux pas: every painting involved scores nothing for prestige.</li>
           <li>Your <b>assistant</b> holds one tile for later. Its tile scores nothing at the end.</li>
@@ -287,7 +288,7 @@ export function showHelp(onClose?: () => void) {
           <li>Ties go to the most bid-card value left in hand.</li>
         </ul>
         <h3>Controls</h3>
-        <p class="small">Point at your wall to preview a spot, click to pin it, click again (or press <b>Hang here</b>) to confirm. Esc unpins. Drag to look around, scroll to zoom, click any painting to look closer.</p>
+        <p class="small">Point at your wall to preview a spot, click to pin it, click again (or press <b>Hang here</b>) to confirm. Esc unpins. The panel shows your score now and with the tile there. Click a tile you hung this round to move it. Drag to look around, scroll to zoom, click any painting to look closer.</p>
         <p class="small">Rest the pointer on a player's card to see their wall, click it to go there. Keys: <b>1</b>\u2013<b>4</b> a player's wall, <b>T</b> the table, <b>M</b> your wall, <b>G</b> every wall side by side. Click a type in the museum panel (or a museum pile on the table) to see the paintings the museum holds.</p>
         <p class="small">With nothing pinned, Esc opens the menu. When nobody else is at the table it pauses the game, and so does switching to another tab.</p>
       </div>

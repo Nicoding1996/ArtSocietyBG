@@ -668,6 +668,67 @@ export function plaqueTexture(name: string, color: string): HTMLCanvasElement {
   return c;
 }
 
+/**
+ * A small engraved brass plate, like the name plates over the walls: the museum piles and the supply.
+ * With `accent`, an enamel badge in the type's colour carries its icon at the left.
+ */
+export function brassPlateTexture(text: string, accent?: { color: string; icon: string }): HTMLCanvasElement {
+  const W = 560;
+  const H = 160;
+  const [c, ctx] = canvas(W, H);
+  const body = ctx.createLinearGradient(0, 0, 0, H);
+  body.addColorStop(0, '#f8e3a2');
+  body.addColorStop(0.45, '#cfa24b');
+  body.addColorStop(1, '#94692a');
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.roundRect(3, 3, W - 6, H - 6, 30);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(58,34,8,0.8)';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  // An engraved line inside the rim and a sheen across the top.
+  ctx.strokeStyle = 'rgba(58,34,8,0.5)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(17, 17, W - 34, H - 34, 20);
+  ctx.stroke();
+  const sheen = ctx.createLinearGradient(0, 0, 0, H * 0.5);
+  sheen.addColorStop(0, 'rgba(255,250,225,0.5)');
+  sheen.addColorStop(1, 'rgba(255,250,225,0)');
+  ctx.fillStyle = sheen;
+  ctx.beginPath();
+  ctx.roundRect(20, 20, W - 40, H * 0.32, 14);
+  ctx.fill();
+  let cx = W / 2;
+  let room = W - 90;
+  if (accent) {
+    const s = 96;
+    const x = 34;
+    const y = (H - s) / 2;
+    ctx.fillStyle = '#3a2408';
+    ctx.beginPath();
+    ctx.roundRect(x - 5, y - 5, s + 10, s + 10, 20);
+    ctx.fill();
+    ctx.fillStyle = accent.color;
+    ctx.beginPath();
+    ctx.roundRect(x, y, s, s, 15);
+    ctx.fill();
+    drawIcon(ctx, accent.icon, '#16120e', x + s / 2, y + s / 2, s * 0.74, 2.2);
+    const left = x + s + 14;
+    cx = left + (W - 30 - left) / 2;
+    room = W - 30 - left - 10;
+  }
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `700 66px ${SERIF}`;
+  ctx.fillStyle = 'rgba(255,246,218,0.6)';
+  ctx.fillText(text, cx + 2, H / 2 + 6, room);
+  ctx.fillStyle = '#3a2408';
+  ctx.fillText(text, cx, H / 2 + 3, room);
+  return c;
+}
+
 /** A small engraved label (value tokens, easel signs). */
 export function labelTexture(text: string, opts: { w?: number; h?: number; bg?: string; fg?: string; size?: number } = {}): HTMLCanvasElement {
   const w = opts.w ?? 256;

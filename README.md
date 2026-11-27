@@ -39,13 +39,14 @@ When you are the only person at the table (everyone else is a bot, or away), Esc
 
 1. **The auctioneer** picks one painting more than there are players, choosing by size only. The paintings are then turned over.
 2. **Everyone bids at once** with one of their cards. Each card is used once per game. On a tie, compare the next card down in each tied player's stack, with the starting card at the bottom.
-3. **Highest bid chooses first**, then the next, and each player hangs their painting straight away.
+3. **Highest bid chooses first**, then the next, and each player hangs their painting straight away. The round ends once everyone has pressed **Done**.
 4. **The museum** receives the painting nobody took, and its type gains prestige equal to its value. Two markers never share a space: a marker that would land on another steps back to the nearest free space.
 5. The gavel passes to the auctioneer's left.
 
 **Hanging**
 
 - A tile must fit inside the grid and touch another tile along an edge. Tiles are never turned.
+- **Until you press Done for the round**, you may move the tiles you hung this round. Tiles from earlier rounds stay put, and so do the paintings in a frame match that earned decor, so the decor stays earned. A move never earns decor, and every tile must still touch the rest of the wall.
 - **Same frame** as a neighbour: take decor worth up to the number of matching neighbours. With 4 or more matches you may take several decor tiles that add up to that number. Decor earned in the round you complete your wall is not taken.
 - **Same type** touching: a faux pas. Every painting involved scores no type points.
 - Your **assistant** holds one tile for later. A tile still on the assistant at the end scores nothing.

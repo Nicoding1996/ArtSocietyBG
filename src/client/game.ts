@@ -72,7 +72,17 @@ export class GameScreen {
       place: (req) => {
         const me = this.me();
         if (!me) return;
-        this.world.startPlacement({ pid: me, tile: req.tile, spots: req.spots, mode: req.mode, onHover: req.onHover, onPin: req.onPin, onCommit: req.onCommit });
+        this.world.startPlacement({
+          pid: me,
+          tile: req.tile,
+          spots: req.spots,
+          mode: req.mode,
+          onHover: req.onHover,
+          onPin: req.onPin,
+          onCommit: req.onCommit,
+          lift: req.lift,
+          onCancel: req.onCancel,
+        });
       },
       stopPlace: () => this.world.stopPlacement(),
       pinned: () => this.world.pinnedSpot(),
@@ -80,6 +90,10 @@ export class GameScreen {
       marks: (m, f) => {
         const me = this.me();
         if (me) this.world.markNeighbours(me, m, f);
+      },
+      movable: (ids, onPick) => {
+        const me = this.me();
+        this.world.setMovable(me && ids?.length ? { pid: me, ids, onPick } : null);
       },
       lookAtMyWall: () => {
         const me = this.me();
@@ -300,6 +314,7 @@ export class GameScreen {
     this.world.onTileClick = null;
     this.world.onWallClick = null;
     this.world.stopPlacement();
+    this.world.setMovable(null);
     this.root.remove();
   }
 
@@ -598,6 +613,22 @@ export class GameScreen {
         const at = wall?.takeStaged(e.tile.id);
         s.queue = s.queue.filter((t) => t.id !== e.tile.id);
         if (at) w.burst(at, '#cccccc', 20, 0.4, 0.1, 0.7);
+        break;
+      }
+      case 'move': {
+        const wall = w.walls.get(e.pid);
+        const s = this.shownOf(e.pid);
+        if (!wall || !s.wall.some((h) => h.tile.id === e.tile.id)) break;
+        if (e.pid === me) w.stopPlacement();
+        s.wall = s.wall.map((h) => (h.tile.id === e.tile.id ? { tile: h.tile, x: e.x, y: e.y } : h));
+        const at = await wall.moveAnimated(e.tile.id, e.x, e.y, w.tw);
+        this.audio.hang();
+        if (at && e.faux.length) {
+          wall.flash([...e.faux, e.tile.id], '#ff5a5a', 1.8);
+          this.audio.faux();
+          w.floatAt(at.clone().setY(at.y + e.tile.h * CELL_H * 0.5 + 0.2), 'Faux pas!', 'bad');
+          await this.wait(420);
+        }
         break;
       }
       case 'done':

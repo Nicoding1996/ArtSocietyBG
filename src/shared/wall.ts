@@ -71,6 +71,51 @@ export function fits(g: Grid, w: number, h: number): boolean {
   return false;
 }
 
+/** For each hung tile, the number of its group of tiles joined edge to edge; `count` groups in all. */
+export function wallGroups(wall: readonly Hung[], g: Grid = gridOf(wall)): { group: Int16Array; count: number } {
+  const group = new Int16Array(wall.length).fill(-1);
+  let count = 0;
+  for (let i = 0; i < wall.length; i++) {
+    if (group[i] >= 0) continue;
+    group[i] = count;
+    const stack = [i];
+    while (stack.length) {
+      const h = wall[stack.pop()!];
+      for (const k of neighbours(g, h.tile.w, h.tile.h, h.x, h.y)) {
+        if (group[k] >= 0) continue;
+        group[k] = count;
+        stack.push(k);
+      }
+    }
+    count++;
+  }
+  return { group, count };
+}
+
+/**
+ * Where the hung tile `id` could move to: inside the wall, on space that is empty once it is lifted,
+ * touching another tile, and with the wall still in one piece, so every tile could have been hung in
+ * some legal order. Its own spot is not included.
+ */
+export function moveSpots(wall: readonly Hung[], id: string): { x: number; y: number }[] {
+  const i = wall.findIndex((h) => h.tile.id === id);
+  if (i < 0) return [];
+  const { tile, x: x0, y: y0 } = wall[i];
+  const rest = wall.filter((_, j) => j !== i);
+  const g = gridOf(rest);
+  const { group, count } = wallGroups(rest, g);
+  const out: { x: number; y: number }[] = [];
+  for (let y = 0; y + tile.h <= WALL_H; y++) {
+    for (let x = 0; x + tile.w <= WALL_W; x++) {
+      if ((x === x0 && y === y0) || !isFree(g, tile.w, tile.h, x, y)) continue;
+      // Lifting the tile may split the rest of the wall: the new spot has to join every part again.
+      const touched = new Set(neighbours(g, tile.w, tile.h, x, y).map((k) => group[k]));
+      if (touched.size && touched.size === count) out.push({ x, y });
+    }
+  }
+  return out;
+}
+
 export function emptyCells(g: Grid): number {
   let n = 0;
   for (let i = 0; i < g.length; i++) if (g[i] < 0) n++;

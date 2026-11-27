@@ -1594,7 +1594,7 @@ input:focus {
 .gcol {
   position: relative;
   flex: 1;
-  max-width: 190px;
+  max-width: 216px;
   min-height: 340px;
   display: flex;
   flex-direction: column;

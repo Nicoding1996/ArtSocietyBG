@@ -6,7 +6,7 @@ import { computeResults, ranking, scoreWall } from '../src/shared/scoring';
 import { taskOptions } from '../src/shared/options';
 import { makeRng } from '../src/shared/rng';
 import { FRAMES, GENRES, type Action, type FrameId, type GameState, type Genre, type Hung, type IncomingFrom, type Painting, type PlayerState, type Tile } from '../src/shared/types';
-import { canHang, gridOf } from '../src/shared/wall';
+import { canHang, gridOf, moveSpots, wallGroups } from '../src/shared/wall';
 import { checkInvariants, playBotGame } from '../scripts/botgame';
 
 function newGame(n = 3, seed = 42): GameState {
@@ -46,7 +46,7 @@ function giveTask(g: GameState, p: PlayerState, tile: Tile, from: IncomingFrom =
     x.took = true;
     x.task = null;
   }
-  p.task = { queue: [{ tile, from }], rewards: [] };
+  p.task = { queue: [{ tile, from }], rewards: [], placed: [], locked: [] };
 }
 
 describe('components', () => {
@@ -225,6 +225,9 @@ describe('hanging tiles', () => {
     const ev = act(g, p.id, { type: 'hang', which: 'new', x: 2, y: 4 }); // left edge of the starter
     expect(ev.find((e) => e.t === 'hang')).toBeTruthy();
     expect(p.wall).toHaveLength(2);
+    // It could still move, so the player says when they are finished.
+    expect(taskOptions(g, p)).toMatchObject({ stage: 'finish', moves: [t.id], canDone: true });
+    act(g, p.id, { type: 'done' });
     expect(p.task).toBeNull();
   });
 
@@ -257,8 +260,12 @@ describe('hanging tiles', () => {
     expect(g.decor['2x1']).toBe(supply - 1);
     expect(p.task?.queue[0].tile.kind).toBe('decor');
     act(g, p.id, { type: 'hang', which: 'new', x: 6, y: 0 });
+    const decor = p.wall.at(-1)!.tile;
+    expect(decor.kind).toBe('decor');
+    // The painting that earned the decor stays put; the decor may still move until the player is done.
+    expect(taskOptions(g, p)).toMatchObject({ stage: 'finish', moves: [decor.id] });
+    act(g, p.id, { type: 'done' });
     expect(p.task).toBeNull();
-    expect(p.wall.at(-1)?.tile.kind).toBe('decor');
   });
 
   it('four or more matches may be split over several decor tiles', () => {
@@ -311,6 +318,107 @@ describe('hanging tiles', () => {
     expect(s.genres.find((x) => x.genre === 'landscape')).toMatchObject({ count: 2, faux: 2, points: 0 });
     expect(s.genres.find((x) => x.genre === 'city')).toMatchObject({ count: 1, faux: 0, points: 4 });
     expect(s.eyelineCount).toBe(2);
+  });
+});
+
+describe('moving tiles hung this round', () => {
+  const where = (p: PlayerState, id: string) => p.wall.find((h) => h.tile.id === id);
+
+  it('until the player is done, the round waits and the new painting can move', () => {
+    const g = newGame(2);
+    hangStarters(g);
+    const p = g.players[0];
+    // A starting painting whose frame and type nothing else here shares, at x 4-5, y 4-6.
+    p.wall[0] = { tile: art('still', 'walnut', 2, 3), x: 4, y: 4 };
+    const starter = p.wall[0].tile;
+    const t = art('city', 'gilded', 2, 2);
+    giveTask(g, p, t);
+    act(g, p.id, { type: 'hang', which: 'new', x: 2, y: 4 });
+    expect(g.phase.kind).toBe('acquire');
+    expect(waitingOn(g)).toEqual([p.id]);
+    expect(botDecide(viewFor(g, p.id), p.id, () => 0.5)).toEqual({ type: 'done' });
+    const ev = act(g, p.id, { type: 'move', tile: t.id, x: 6, y: 4 });
+    expect(ev.find((e) => e.t === 'move')).toMatchObject({ pid: p.id, fromX: 2, fromY: 4, x: 6, y: 4, faux: [] });
+    expect(where(p, t.id)).toMatchObject({ x: 6, y: 4 });
+    expect(p.wall[0].tile).toBe(starter);
+    expect(g.log.at(-1)?.text).toMatch(/moves .* on their wall/);
+    // A move never earns decor, and the tile can always go back where it was.
+    expect(p.task?.rewards).toEqual([]);
+    act(g, p.id, { type: 'move', tile: t.id, x: 2, y: 4 });
+    expect(reject(g, p.id, { type: 'move', tile: t.id, x: 2, y: 4 })).toMatch(/already hangs there/);
+    expect(reject(g, p.id, { type: 'move', tile: t.id, x: 4, y: 5 })).toMatch(/empty space/); // onto the starter
+    expect(reject(g, p.id, { type: 'move', tile: t.id, x: 9, y: 4 })).toMatch(/inside/);
+    expect(reject(g, p.id, { type: 'move', tile: t.id, x: 0, y: 0 })).toMatch(/touching/);
+    expect(reject(g, p.id, { type: 'move', tile: starter.id, x: 4, y: 7 })).toMatch(/hung this round/);
+    expect(reject(g, p.id, { type: 'move', tile: 'nope', x: 4, y: 7 })).toMatch(/hung this round/);
+    act(g, p.id, { type: 'done' });
+    expect(p.task).toBeNull();
+    expect(g.phase.kind).toBe('select');
+    expect(reject(g, p.id, { type: 'move', tile: t.id, x: 6, y: 4 })).toMatch(/stay put/);
+  });
+
+  it('a move must leave every tile joined to the rest of the wall', () => {
+    const g = newGame(2);
+    hangStarters(g);
+    const p = g.players[0];
+    p.wall[0] = { tile: art('still', 'silver', 2, 3), x: 4, y: 4 };
+    const a = art('city', 'gilded', 1, 2);
+    const b = art('portrait', 'walnut', 1, 2);
+    giveTask(g, p, a);
+    p.assistant = b;
+    act(g, p.id, { type: 'hang', which: 'new', x: 3, y: 4 }); // left of the starter
+    act(g, p.id, { type: 'hang', which: 'assistant', x: 2, y: 4 }); // left of a, touching nothing else
+    expect(taskOptions(g, p)!.moves.sort()).toEqual([a.id, b.id].sort());
+    // Without a in between, b would hang on nothing.
+    expect(moveSpots(p.wall, a.id)).not.toContainEqual({ x: 6, y: 4 });
+    expect(moveSpots(p.wall, a.id)).toContainEqual({ x: 3, y: 5 });
+    expect(reject(g, p.id, { type: 'move', tile: a.id, x: 6, y: 4 })).toMatch(/rest of the wall/);
+    act(g, p.id, { type: 'move', tile: a.id, x: 3, y: 5 }); // still between b and the starter
+    act(g, p.id, { type: 'move', tile: b.id, x: 6, y: 4 }); // right of the starter instead
+    act(g, p.id, { type: 'move', tile: a.id, x: 6, y: 6 }); // under b
+    expect(wallGroups(p.wall).count).toBe(1);
+    act(g, p.id, { type: 'done' });
+    expect(p.task).toBeNull();
+  });
+
+  it('paintings in a frame match that earned decor stay put, while the decor can still move', () => {
+    const g = newGame(2);
+    const p = g.players[0];
+    p.starter = null;
+    p.wall = [{ tile: art('still', 'walnut', 2, 3), x: 4, y: 4 }];
+    const a = art('city', 'gilded', 1, 2);
+    const b = art('portrait', 'gilded', 1, 2);
+    giveTask(g, p, b);
+    p.assistant = a;
+    act(g, p.id, { type: 'hang', which: 'assistant', x: 3, y: 4 }); // no match with the walnut frame
+    act(g, p.id, { type: 'hang', which: 'new', x: 2, y: 4 }); // matches a: decor worth 1
+    expect(p.task?.locked.sort()).toEqual([a.id, b.id].sort());
+    expect(reject(g, p.id, { type: 'move', tile: a.id, x: 3, y: 5 })).toMatch(/decor tile first/);
+    act(g, p.id, { type: 'decor', shapes: ['1x1'] });
+    act(g, p.id, { type: 'hang', which: 'new', x: 3, y: 6 });
+    const decor = p.wall.at(-1)!.tile;
+    expect(taskOptions(g, p)).toMatchObject({ stage: 'finish', moves: [decor.id] });
+    expect(reject(g, p.id, { type: 'move', tile: a.id, x: 6, y: 4 })).toMatch(/stays put/);
+    expect(reject(g, p.id, { type: 'move', tile: b.id, x: 2, y: 6 })).toMatch(/stays put/);
+    act(g, p.id, { type: 'move', tile: decor.id, x: 6, y: 4 });
+    act(g, p.id, { type: 'done' });
+    expect(p.task).toBeNull();
+  });
+
+  it('a painting moved against its own type is a faux pas', () => {
+    const g = newGame(2);
+    const p = g.players[0];
+    p.starter = null;
+    const old = art('city', 'walnut', 2, 3);
+    p.wall = [{ tile: old, x: 4, y: 4 }, { tile: art('portrait', 'silver', 2, 2), x: 2, y: 4 }];
+    const t = art('city', 'gilded', 2, 2);
+    giveTask(g, p, t);
+    act(g, p.id, { type: 'hang', which: 'new', x: 2, y: 2 }); // above the portrait, clear of the other city
+    const ev = act(g, p.id, { type: 'move', tile: t.id, x: 6, y: 4 }); // right of the city painting
+    expect(ev.find((e) => e.t === 'move')).toMatchObject({ faux: [old.id] });
+    expect(g.log.at(-1)?.text).toMatch(/Faux pas/);
+    const s = scoreWall({ id: p.id, wall: p.wall, excess: [], hand: [] }, ranking({ city: 5, portrait: 3, still: 0, landscape: 0 }));
+    expect(s.genres.find((x) => x.genre === 'city')).toMatchObject({ count: 2, faux: 2 });
   });
 });
 
@@ -392,6 +500,7 @@ describe('running out of space', () => {
     expect(p.task?.queue[0]).toMatchObject({ from: 'museum' });
     expect(reject(g, p.id, { type: 'assist' })).toMatch(/must be hung/);
     act(g, p.id, { type: 'hang', which: 'new', x: 6, y: 4 });
+    // It filled the only gap, so it has nowhere else to go and the task ends by itself.
     expect(p.task).toBeNull();
   });
 
@@ -427,6 +536,9 @@ describe('running out of space', () => {
     const ev = act(g, p.id, { type: 'excess' });
     expect(ev.some((e) => e.t === 'trigger' && e.reason === 'excess')).toBe(true);
     act(g, p.id, { type: 'hang', which: 'new', x: 6, y: 4 });
+    // The sconce could still move down a space, so the round waits for the player.
+    expect(g.phase.kind).toBe('acquire');
+    act(g, p.id, { type: 'done' });
     expect(g.phase.kind).toBe('over');
     const r = g.results!.players.find((x) => x.pid === p.id)!;
     expect(r.excessPoints).toBe(-4);
@@ -437,7 +549,7 @@ describe('running out of space', () => {
     p.assistant = art('city', 'walnut', 4, 4);
     const before = g.decor['3x1'];
     giveTask(g, p, art('city', 'gilded', 1, 1 + 1));
-    p.task = { queue: [], rewards: [{ points: 3, from: 'frames' }] };
+    p.task = { queue: [], rewards: [{ points: 3, from: 'frames' }], placed: [], locked: [] };
     // The shelf cannot be hung and the assistant cannot make room, so it goes straight back.
     const ev = act(g, p.id, { type: 'decor', shapes: ['3x1'] });
     expect(ev.some((e) => e.t === 'discard')).toBe(true);
@@ -506,7 +618,7 @@ describe('swapping decor when a size runs out', () => {
     const { g, p } = soldOut();
     g.decor['1x1'] = 5;
     giveTask(g, p, art('city', 'gilded', 1, 2));
-    p.task = { queue: [], rewards: [{ points: 2, from: 'frames' }] };
+    p.task = { queue: [], rewards: [{ points: 2, from: 'frames' }], placed: [], locked: [] };
     expect(taskOptions(g, p)!.swaps).toEqual([]);
     expect(reject(g, p.id, { type: 'swapDecor', shape: '3x1', x: 0, y: 0 })).toMatch(/run out/);
     expect(reject(g, p.id, { type: 'skipDecor' })).toMatch(/still has decor/);
@@ -515,7 +627,7 @@ describe('swapping decor when a size runs out', () => {
   it('a swap replaces whole decor tiles only: no paintings, gaps or tiles sticking out', () => {
     const { g, p } = soldOut();
     giveTask(g, p, art('city', 'gilded', 1, 2));
-    p.task = { queue: [], rewards: [{ points: 1, from: 'frames' }] };
+    p.task = { queue: [], rewards: [{ points: 1, from: 'frames' }], placed: [], locked: [] };
     // A pair of cameos and a sconce along the top-left instead of three sconces.
     p.wall = p.wall.filter((h) => !(h.y === 0 && h.x <= 2));
     p.wall.push({ tile: makeDecor('2x1', 'pair'), x: 0, y: 0 }, { tile: makeDecor('1x1', 'one'), x: 2, y: 0 });

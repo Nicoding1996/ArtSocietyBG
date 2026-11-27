@@ -21,7 +21,7 @@ import {
   type TieBreak,
   type Tile,
 } from './types';
-import { canHang, coversStar, fits, gridOf, inside, isFull, matchingFrames, sameGenre } from './wall';
+import { canHang, coversStar, fits, gridOf, inside, isFull, matchingFrames, moveSpots, sameGenre } from './wall';
 
 export interface NewPlayer {
   id: string;
@@ -187,7 +187,7 @@ function act(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): string |
       if (i < 0) return 'That painting is not on offer.';
       const tile = g.lots.splice(i, 1)[0];
       p.took = true;
-      p.task = { queue: [{ tile, from: 'auction' }], rewards: [] };
+      p.task = { queue: [{ tile, from: 'auction' }], rewards: [], placed: [], locked: [] };
       ph.next++;
       ev.push({ t: 'take', pid: p.id, tile, pick: ph.next });
       log(g, 'take', `${p.name} takes ${describe(tile)}.`, p.id);
@@ -203,7 +203,9 @@ function act(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): string |
     case 'swapDecor':
     case 'skipDecor':
     case 'discard':
+    case 'move':
     case 'done': {
+      if (a.type === 'move' && !p.task) return 'Tiles stay put once you are done for the round.';
       if (ph.kind !== 'acquire' || !p.task) return 'You have nothing to hang right now.';
       const err = taskAction(g, p, a, ev);
       if (err) return err;
@@ -247,6 +249,9 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
         faux = sameGenre(p.wall, grid, tile, a.x, a.y);
       }
       p.wall.push({ tile, x: a.x, y: a.y });
+      t.placed.push(tile.id);
+      // The match that earns decor must still be on the wall at the end, so its paintings stay put.
+      if (matches.length) for (const id of [tile.id, ...matches]) if (t.placed.includes(id) && !t.locked.includes(id)) t.locked.push(id);
       if (a.which === 'assistant') p.assistant = null;
       else t.queue.shift();
       ev.push({ t: 'hang', pid: p.id, tile, x: a.x, y: a.y, from, matches, faux });
@@ -344,6 +349,8 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       if (!sw) return 'A swap must exactly replace 2 or 3 decor tiles on your wall, at least one of a size that has run out.';
       const gone = new Set(sw.removed.map((d) => d.id));
       p.wall = p.wall.filter((h) => !gone.has(h.tile.id));
+      // The long tile takes the place of decor already on the wall, so it stays where they were.
+      t.placed = t.placed.filter((id) => !gone.has(id));
       for (const d of sw.removed) g.decor[d.shape]++;
       g.decor[sw.shape]--;
       const tile = makeDecor(sw.shape, `d${++g.decorSeq}`);
@@ -371,6 +378,25 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       log(g, 'decor', `${p.name} has no room for the ${DECOR_INFO[head.tile.shape].name.toLowerCase()} and puts it back.`, p.id);
       return null;
     }
+    case 'move': {
+      if (t.rewards.length) return 'Choose your decor tile first.';
+      const i = p.wall.findIndex((h) => h.tile.id === a.tile);
+      if (i < 0 || !t.placed.includes(a.tile)) return 'Only tiles hung this round can be moved.';
+      if (t.locked.includes(a.tile)) return 'That painting is part of a frame match that earned decor, so it stays put.';
+      const h = p.wall[i];
+      if (!isInt(a.x, 0, RULES.wallW) || !isInt(a.y, 0, RULES.wallH) || !inside(h.tile.w, h.tile.h, a.x, a.y)) return 'It must hang fully inside the wall.';
+      if (a.x === h.x && a.y === h.y) return 'It already hangs there.';
+      if (!moveSpots(p.wall, a.tile).some((s) => s.x === a.x && s.y === a.y)) {
+        return 'Tiles must hang on empty space, touching another tile along an edge, and every tile must still touch the rest of the wall.';
+      }
+      const rest = p.wall.filter((_, j) => j !== i);
+      const faux = h.tile.kind === 'painting' ? sameGenre(rest, gridOf(rest), h.tile, a.x, a.y) : [];
+      p.wall[i] = { tile: h.tile, x: a.x, y: a.y };
+      ev.push({ t: 'move', pid: p.id, tile: h.tile, fromX: h.x, fromY: h.y, x: a.x, y: a.y, faux });
+      log(g, 'hang', `${p.name} moves ${h.tile.kind === 'painting' ? describe(h.tile) : `the ${DECOR_INFO[h.tile.shape].name.toLowerCase()}`} on their wall.`, p.id);
+      if (h.tile.kind === 'painting' && faux.length) log(g, 'warn', `Faux pas! ${p.name}'s ${GENRE_INFO[h.tile.genre].name.toLowerCase()} touches another of its type: they will not score.`, p.id);
+      return null;
+    }
     case 'done': {
       if (t.rewards.length || t.queue.length) return 'You still have something to hang.';
       finishTask(p, ev);
@@ -378,6 +404,18 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
     }
   }
   return 'Unknown action.';
+}
+
+/**
+ * Tiles hung during the current task that may still move, and have somewhere to go: the rulebook lets a
+ * player rearrange what they hang this round until they are finished. Paintings in a frame match that
+ * earned decor stay put, so the decor stays earned.
+ */
+export function movableTiles(p: Pick<PlayerState, 'wall' | 'task'>): string[] {
+  const t = p.task;
+  if (!t?.placed?.length) return [];
+  const locked = t.locked ?? [];
+  return t.placed.filter((id) => !locked.includes(id) && moveSpots(p.wall, id).length > 0);
 }
 
 /** Museum paintings an unfitting auction painting could be exchanged for. */
@@ -492,8 +530,10 @@ function advance(g: GameState, p: PlayerState, ev: GameEvent[]) {
       }
       return;
     }
-    // Nothing new left: the player may still hang the assistant's tile, or finish.
+    // Nothing new left: the player may still hang the assistant's tile, move what they hung this round,
+    // or finish. With none of that possible there is no choice left, so the task ends by itself.
     if (p.assistant && fits(grid, p.assistant.w, p.assistant.h)) return;
+    if (movableTiles(p).length) return;
     finishTask(p, ev);
     return;
   }

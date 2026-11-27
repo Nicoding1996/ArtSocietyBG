@@ -1,5 +1,5 @@
 import { DECOR_INFO } from './content';
-import { decorSwaps, exchangeOptions, type DecorSwap } from './engine';
+import { decorSwaps, exchangeOptions, movableTiles, type DecorSwap } from './engine';
 import { DECOR_SHAPES, type DecorShape, type GameState, type GameView, type Incoming, type Painting, type PlayerState } from './types';
 import { fits, gridOf } from './wall';
 
@@ -26,7 +26,10 @@ export function waitingOnView(v: GameView): string[] {
 
 /** Everything a player may legally do with their current task. Mirrors the engine's checks. */
 export interface TaskOptions {
-  /** 'decor': choose decor from the supply; 'tile': handle the next tile; 'finish': only the assistant is left. */
+  /**
+   * 'decor': choose decor from the supply; 'tile': handle the next tile; 'finish': nothing new is left,
+   * but the assistant's tile could be hung or a tile hung this round moved.
+   */
   stage: 'decor' | 'tile' | 'finish';
   reward: number;
   /** Why decor is being chosen: matching frames, or the 1-point tile that comes with an excess painting. */
@@ -49,6 +52,8 @@ export interface TaskOptions {
   canExcess: boolean;
   canDiscard: boolean;
   canDone: boolean;
+  /** Tiles hung this round that can move now (not while decor waits to be chosen). */
+  moves: string[];
 }
 
 export function taskOptions(g: Pick<GameState, 'museum' | 'decor'>, p: Pick<PlayerState, 'wall' | 'task' | 'assistant'>): TaskOptions | null {
@@ -82,6 +87,7 @@ export function taskOptions(g: Pick<GameState, 'museum' | 'decor'>, p: Pick<Play
     canExcess: free && auctionPainting && !headFits && exchange.length === 0,
     canDiscard: free && !!head && head.tile.kind === 'decor' && !headFits && !!p.assistant,
     canDone: free && !head,
+    moves: free ? movableTiles(p) : [],
   };
 }
 

@@ -3,7 +3,7 @@ import { botDecide } from '../src/shared/bot';
 import { makeRng } from '../src/shared/rng';
 import { PLAYER_COLORS, RULES } from '../src/shared/content';
 import { GENRES, type GameEvent, type GameState } from '../src/shared/types';
-import { gridOf, neighbours, WALL_H, WALL_W } from '../src/shared/wall';
+import { gridOf, neighbours, wallGroups, WALL_H, WALL_W } from '../src/shared/wall';
 
 /**
  * Checks the invariants that must hold after every action. Throws with a description if one breaks.
@@ -30,7 +30,10 @@ export function checkInvariants(s: GameState, decorTotal = 108) {
       p.wall.forEach((h) => {
         if (!neighbours(g, h.tile.w, h.tile.h, h.x, h.y).length) throw new Error(`${p.id}: tile ${h.tile.id} touches nothing`);
       });
+      if (wallGroups(p.wall, g).count !== 1) throw new Error(`${p.id}: the wall is not in one piece`);
     }
+    for (const id of p.task?.placed ?? []) if (!p.wall.some((h) => h.tile.id === id)) throw new Error(`${p.id}: tile ${id} hung this round is not on the wall`);
+    for (const id of p.task?.locked ?? []) if (!p.task!.placed.includes(id)) throw new Error(`${p.id}: locked tile ${id} was not hung this round`);
     for (const h of p.wall) h.tile.kind === 'painting' ? paintings++ : decor++;
     if (p.assistant) p.assistant.kind === 'painting' ? paintings++ : decor++;
     paintings += p.excess.length;

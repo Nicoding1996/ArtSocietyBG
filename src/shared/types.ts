@@ -73,6 +73,10 @@ export interface Task {
   queue: Incoming[];
   /** Decor still to be chosen from the supply, first one first. */
   rewards: Reward[];
+  /** Ids of the tiles hung on the wall during this task. Until the player is done they may still move. */
+  placed: string[];
+  /** Of those, the paintings in a frame match that earned decor (the new painting and the ones it touched): they stay put. */
+  locked: string[];
 }
 
 export interface PlayerState {
@@ -231,6 +235,8 @@ export type Action =
   /** Go without the decor when the supply has none of that value left. */
   | { type: 'skipDecor' }
   | { type: 'discard' }
+  /** Move a tile hung this round to (x, y). */
+  | { type: 'move'; tile: string; x: number; y: number }
   | { type: 'done' };
 
 export type ActionType = Action['type'];
@@ -261,6 +267,17 @@ export type GameEvent =
   | { t: 'decor'; pid: string; tiles: Decor[]; reward: number }
   | { t: 'swapDecor'; pid: string; removed: Decor[]; tile: Decor; x: number; y: number }
   | { t: 'discard'; pid: string; tile: Decor }
+  | {
+      t: 'move';
+      pid: string;
+      tile: Tile;
+      fromX: number;
+      fromY: number;
+      x: number;
+      y: number;
+      /** Paintings of the same type it touches at its new spot. */
+      faux: string[];
+    }
   | { t: 'done'; pid: string }
   | { t: 'museum'; tile: Painting; from: number; to: number; landed: number }
   | { t: 'trigger'; reason: EndReason; pid: string | null }

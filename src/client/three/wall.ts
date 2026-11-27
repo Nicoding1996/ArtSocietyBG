@@ -40,6 +40,31 @@ function outlineRect(w: number, h: number, thick: number, mat: THREE.Material): 
   return g;
 }
 
+/** A dashed rectangle outline as one mesh, centred on the origin, with a dash at each end of every side. */
+function dashedRect(w: number, h: number, thick: number, mat: THREE.Material, dash = 0.11, gap = 0.07): THREE.Group {
+  const pos: number[] = [];
+  const quad = (x0: number, y0: number, x1: number, y1: number) => pos.push(x0, y0, 0, x1, y0, 0, x1, y1, 0, x0, y0, 0, x1, y1, 0, x0, y1, 0);
+  const run = (len: number, at: (a: number, b: number) => void) => {
+    const n = Math.max(1, Math.round((len + gap) / (dash + gap)));
+    const d = (len - (n - 1) * gap) / n;
+    for (let i = 0; i < n; i++) at(-len / 2 + i * (d + gap), -len / 2 + i * (d + gap) + d);
+  };
+  const t = thick / 2;
+  run(w, (a, b) => {
+    quad(a, h / 2 - t, b, h / 2 + t);
+    quad(a, -h / 2 - t, b, -h / 2 + t);
+  });
+  run(h, (a, b) => {
+    quad(-w / 2 - t, a, -w / 2 + t, b);
+    quad(w / 2 - t, a, w / 2 + t, b);
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(geo, mat));
+  return g;
+}
+
 /** Takes an outline off the wall and frees its bars and its own material. */
 function freeOutline(o: THREE.Group) {
   o.removeFromParent();
@@ -66,6 +91,11 @@ export class GalleryWall {
   private ghost: { key: string; obj: THREE.Group; outline: THREE.Group; fill: THREE.Mesh } | null = null;
   private ghostMats = new Map<GhostState, THREE.MeshBasicMaterial>();
   private marks: THREE.Group[] = [];
+  /** Dashed outlines on the tiles hung this round that can still move. */
+  private movable: THREE.Group[] = [];
+  private movableMat = new THREE.MeshBasicMaterial({ color: '#bfe3ff', transparent: true, opacity: 0.7, depthWrite: false, toneMapped: false });
+  /** The tile picked up to be moved, and the outline of the space it left. */
+  private lifted: { id: string; hole: THREE.Group } | null = null;
   private spots: THREE.Mesh;
   private spotCanvas: HTMLCanvasElement;
   private spotTex: THREE.CanvasTexture;
@@ -278,7 +308,69 @@ export class GalleryWall {
     // An outline leaves with its tile (a decor swap can take a marked tile off the wall).
     for (const m of this.marks) if (!ids.has(m.userData.tile as string)) freeOutline(m);
     this.marks = this.marks.filter((m) => ids.has(m.userData.tile as string));
-    for (const h of wall) if (!this.hung.has(h.tile.id)) this.hung.set(h.tile.id, this.makeHung(h));
+    for (const h of wall) {
+      const p = this.hung.get(h.tile.id);
+      // A tile moved this round goes to where it hangs now.
+      if (p) p.obj.position.copy(cellLocal(h.x, h.y, h.tile.w, h.tile.h, 0.003));
+      else this.hung.set(h.tile.id, this.makeHung(h));
+    }
+  }
+
+  /** Slides a hung tile to (x, y), lifting it a little off the wall on the way. */
+  async moveAnimated(id: string, x: number, y: number, tw: Tweens): Promise<THREE.Vector3 | null> {
+    const p = this.hung.get(id);
+    if (!p) return null;
+    const obj = p.obj;
+    obj.visible = true;
+    const from = obj.position.clone();
+    const to = cellLocal(x, y, p.tile.w, p.tile.h, 0.003);
+    await tw.add(
+      560,
+      (t) => {
+        obj.position.lerpVectors(from, to, t);
+        obj.position.z += Math.sin(t * Math.PI) * 0.35;
+      },
+      ease.inOut,
+    );
+    obj.position.copy(to);
+    return this.cellWorld(x, y, p.tile.w, p.tile.h);
+  }
+
+  /** Takes a tile off the wall while it is being moved, leaving an outline of its space (null puts it back). */
+  setLifted(id: string | null) {
+    if (this.lifted?.id === id) return;
+    if (this.lifted) {
+      const back = this.hung.get(this.lifted.id);
+      if (back) back.obj.visible = true;
+      freeOutline(this.lifted.hole);
+      this.lifted = null;
+    }
+    const p = id ? this.hung.get(id) : null;
+    if (!id || !p) return;
+    p.obj.visible = false;
+    const hole = outlineRect(p.tile.w * CELL_W - 0.03, p.tile.h * CELL_H - 0.03, 0.018, new THREE.MeshBasicMaterial({ color: '#d9cdb8', transparent: true, opacity: 0.45, depthWrite: false }));
+    hole.position.copy(p.obj.position).setZ(0.006);
+    hole.userData.overlay = true;
+    this.group.add(hole);
+    this.lifted = { id, hole };
+  }
+
+  /** Outlines the tiles that a click would pick up to move. */
+  showMovable(ids: string[]) {
+    for (const o of this.movable) {
+      o.removeFromParent();
+      for (const c of o.children) (c as THREE.Mesh).geometry.dispose();
+    }
+    this.movable = [];
+    for (const id of ids) {
+      const p = this.hung.get(id);
+      if (!p) continue;
+      const o = dashedRect(p.tile.w * CELL_W - 0.05, p.tile.h * CELL_H - 0.05, 0.022, this.movableMat);
+      o.position.copy(p.obj.position).setZ(0.092);
+      o.userData.overlay = true;
+      this.group.add(o);
+      this.movable.push(o);
+    }
   }
 
   /** Hangs a tile with a flight from `from` (world) and a little settle. */
@@ -388,6 +480,7 @@ export class GalleryWall {
       ghostify(obj, 0.82);
       const fill = new THREE.Mesh(new THREE.PlaneGeometry(tile.w * CELL_W, tile.h * CELL_H), this.ghostMat(state, 0.18));
       const outline = outlineRect(tile.w * CELL_W, tile.h * CELL_H, 0.035, this.ghostMat(state, 0.95));
+      obj.userData.overlay = fill.userData.overlay = outline.userData.overlay = true;
       obj.renderOrder = 3;
       this.group.add(obj, fill, outline);
       this.ghost = { key, obj, outline, fill };
@@ -438,6 +531,7 @@ export class GalleryWall {
       const o = outlineRect(p.tile.w * CELL_W - 0.02, p.tile.h * CELL_H - 0.02, 0.03, mat);
       o.position.copy(p.obj.position).setZ(0.085);
       o.userData.tile = id;
+      o.userData.overlay = true;
       this.group.add(o);
       this.marks.push(o);
     };
@@ -477,6 +571,7 @@ export class GalleryWall {
       const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
       const o = outlineRect(p.tile.w * CELL_W - 0.01, p.tile.h * CELL_H - 0.01, 0.05, mat);
       o.position.copy(p.obj.position).setZ(0.1);
+      o.userData.overlay = true;
       this.group.add(o);
       this.flashes.push({ obj: o, mat, age: 0, life });
     }
@@ -491,6 +586,7 @@ export class GalleryWall {
       const o = outlineRect(p.tile.w * CELL_W - 0.03, p.tile.h * CELL_H - 0.03, 0.04, mat);
       o.position.copy(p.obj.position).setZ(0.095);
       o.userData.tile = id;
+      o.userData.overlay = true;
       this.group.add(o);
       this.marks.push(o);
     }
@@ -522,6 +618,7 @@ export class GalleryWall {
       const pulse = 0.75 + Math.sin(this.t * 5) * 0.2;
       for (const c of this.ghost.outline.children) ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = pulse;
     }
+    if (this.movable.length) this.movableMat.opacity = 0.5 + Math.sin(this.t * 2.6) * 0.22;
   }
 
   dispose() {
