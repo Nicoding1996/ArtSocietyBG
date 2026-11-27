@@ -26,7 +26,8 @@ export interface PlaceRequest {
 }
 
 export interface PromptHost {
-  act(a: Action): void;
+  /** Sends an action. False when the connection is down and nothing was sent. */
+  act(a: Action): boolean;
   place(req: PlaceRequest): void;
   stopPlace(): void;
   pinned(): Spot | null;
@@ -59,9 +60,11 @@ interface Local {
   /** A same-type museum painting being tried on the wall in place of a painting that has no room. */
   swap: string | null;
   pending: boolean;
+  /** The connection dropped while `pending`: the action may never have reached the server. */
+  dropped: boolean;
 }
 
-const fresh = (key: string): Local => ({ key, sizes: [], bid: null, lot: null, which: 'new', decor: [], moving: null, swap: null, pending: false });
+const fresh = (key: string): Local => ({ key, sizes: [], bid: null, lot: null, which: 'new', decor: [], moving: null, swap: null, pending: false, dropped: false });
 
 /**
  * Where a painting with no room on a player's wall could still go: the assistant (free now, or once the
@@ -114,7 +117,21 @@ export class Prompts {
   /** The server rejected the last action: let the player try again. */
   unlock() {
     this.local.pending = false;
+    this.local.dropped = false;
     this.rerender();
+  }
+
+  /** The connection dropped: an action still waiting for its answer may never have reached the server. */
+  connectionLost() {
+    if (this.local.pending) this.local.dropped = true;
+  }
+
+  /**
+   * The first state after reconnecting is on screen. An action that reached the server has moved the panel
+   * on by now, so one that still waits from before the drop was lost: the player may try again.
+   */
+  resynced() {
+    if (this.local.pending && this.local.dropped) this.unlock();
   }
 
   hide() {
@@ -151,9 +168,11 @@ export class Prompts {
 
   /** `keepPlace` leaves a painting being tried on the wall in place (sealing a bid does not end it). */
   private send(a: Action, keepPlace = false) {
+    // Nothing went out (no connection), so nothing waits for an answer: the player can just try again.
+    if (!this.host.act(a)) return;
     this.local.pending = true;
+    this.local.dropped = false;
     if (!keepPlace) this.host.stopPlace();
-    this.host.act(a);
     this.rerender();
   }
 
@@ -472,10 +491,8 @@ export class Prompts {
     if (head?.from === 'museum' && head.tile.id === sh.id) {
       this.swapHang = null;
       const free = !p.task!.rewards.length && legalSpots(gridOf(p.wall), head.tile.w, head.tile.h).some((s) => s.x === sh.x && s.y === sh.y);
-      if (free) {
-        this.local.pending = true;
-        this.host.act({ type: 'hang', which: 'new', x: sh.x, y: sh.y });
-      }
+      // Not sent (no connection): the museum painting waits to be hung by hand.
+      if (free && this.host.act({ type: 'hang', which: 'new', x: sh.x, y: sh.y })) this.local.pending = true;
     } else if (!this.local.pending) this.swapHang = null;
   }
 

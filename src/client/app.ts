@@ -62,6 +62,7 @@ export class App {
     this.net.onStatus((s) => {
       this.status.className = `net-status ${s}`;
       this.status.textContent = s === 'open' ? '' : s === 'connecting' ? 'Connecting to the salon\u2026' : 'Connection lost \u2014 reconnecting\u2026';
+      this.game?.connection(s);
     });
     this.net.on((m) => this.handle(m));
     this.showHome();
@@ -121,6 +122,7 @@ export class App {
         this.room = m.room;
         this.me = m.you;
         this.net.room = m.room.code;
+        this.net.rememberSeat(m.room.code);
         history.replaceState(null, '', `?room=${m.room.code}`);
         if (m.room.status === 'lobby') this.showLobby();
         else if (this.screen !== 'game') this.showGame();
@@ -157,6 +159,7 @@ export class App {
         break;
       }
       case 'left':
+        if (this.net.room) this.net.forgetSeat(this.net.room);
         this.net.room = null;
         this.room = null;
         history.replaceState(null, '', location.pathname);
@@ -191,7 +194,8 @@ export class App {
       onJoin: (name, c) => {
         localStorage.setItem(NAME_KEY, name);
         this.audio.unlock();
-        this.net.send({ t: 'join', code: c, name });
+        // With the browser's seats in that room, a player whose tab was closed gets their seat back.
+        this.net.send({ t: 'join', code: c, name, tokens: this.net.seatsIn(c) });
       },
       onHelp: () => showHelp(),
     });

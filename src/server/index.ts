@@ -6,7 +6,7 @@ import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { guarded } from './guard';
-import { RoomManager, cleanName, type Conn } from './rooms';
+import { RoomManager, TOKEN_RE, cleanName, cleanTokens, type Conn } from './rooms';
 import { sharedSourceHash } from './sourceHash';
 import type { ClientMessage, ServerMessage } from '../shared/types';
 
@@ -104,8 +104,6 @@ const server = http.createServer(serveStatic);
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
 const rooms = new RoomManager();
 
-const TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
-
 function send(ws: WebSocket, msg: ServerMessage) {
   if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
 }
@@ -185,12 +183,20 @@ function onMessage(conn: Conn, msg: ClientMessage) {
       if (!room) return send(ws, { t: 'error', message: 'No room with that code. Check the code and try again.' });
       const existing = room.seatByToken(conn.token);
       if (existing) return room.attach(conn, existing);
+      // A seat this browser held, from a tab that was closed. A game that has started takes no new
+      // players, so there the seat is taken over even from another tab (say one that crashed).
+      if (room.reclaim(conn, cleanTokens(msg.tokens), room.status === 'game')) return;
     }
     const seat = room.addHuman(conn, cleanName(msg.name));
     if (typeof seat === 'string') {
       if (msg.t === 'create') rooms.remove(room);
       return send(ws, { t: 'error', message: seat });
     }
+    return;
+  }
+  if (msg.t === 'resume') {
+    // Only a free seat, and nothing is said if there is none: the page simply stays on its home screen.
+    if (!conn.room && typeof msg.code === 'string') rooms.get(msg.code)?.reclaim(conn, cleanTokens(msg.tokens), false);
     return;
   }
   if (msg.t === 'leave') {

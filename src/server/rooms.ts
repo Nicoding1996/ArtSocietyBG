@@ -51,6 +51,14 @@ function send(conn: Conn | null, msg: ServerMessage) {
   if (conn && conn.ws.readyState === conn.ws.OPEN) conn.ws.send(JSON.stringify(msg));
 }
 
+/** A session token as the page makes them. */
+export const TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
+
+/** Seat tokens from a message: well-formed ones only, and no more than a browser keeps per room. */
+export function cleanTokens(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.filter((t): t is string => typeof t === 'string' && TOKEN_RE.test(t)).slice(0, 4) : [];
+}
+
 export function cleanName(raw: unknown): string {
   const s = typeof raw === 'string' ? raw : '';
   const name = s.replace(/[\u0000-\u001f\u007f-\u009f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 18);
@@ -107,6 +115,22 @@ export class Room {
     };
     this.seats.push(seat);
     if (!this.hostId) this.hostId = seat.id;
+    this.attach(conn, seat);
+    return seat;
+  }
+
+  /**
+   * Gives `conn` a seat its browser held here before (the tab was closed): the first one that no tab is
+   * using, or with `takeOver` the newest even if a tab is using it. A tab with a seat here takes no other,
+   * and a seat whose player left on purpose stays with the bot. The seat moves to this tab's token, so
+   * this tab's reloads find it from now on. Null if there is no such seat.
+   */
+  reclaim(conn: Conn, tokens: readonly string[], takeOver: boolean): Seat | null {
+    if (!conn.token || this.seatByToken(conn.token)) return null;
+    const mine = tokens.map((t) => this.seatByToken(t)).filter((s): s is Seat => !!s && !s.isBot && !s.left);
+    const seat = mine.find((s) => !s.conn) ?? (takeOver ? mine[0] : undefined);
+    if (!seat) return null;
+    seat.token = conn.token;
     this.attach(conn, seat);
     return seat;
   }

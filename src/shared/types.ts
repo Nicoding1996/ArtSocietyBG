@@ -310,7 +310,10 @@ export interface RoomView {
 export type ClientMessage =
   | { t: 'hello'; token: string; room?: string }
   | { t: 'create'; name: string }
-  | { t: 'join'; code: string; name: string }
+  /** `tokens`: the seats this browser held in that room, newest first, so a player whose tab was closed gets theirs back. */
+  | { t: 'join'; code: string; name: string; tokens?: string[] }
+  /** A tab without a seat takes back one of the browser's seats in that room, if no tab is using it. */
+  | { t: 'resume'; code: string; tokens: string[] }
   | { t: 'leave' }
   | { t: 'profile'; name?: string; color?: string; hat?: HatId }
   | { t: 'addBot' }

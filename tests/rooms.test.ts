@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { botDecide } from '../src/shared/bot';
 import { viewFor } from '../src/shared/engine';
 import type { ClientMessage, ServerMessage } from '../src/shared/types';
-import { Room, type Conn } from '../src/server/rooms';
+import { Room, cleanTokens, type Conn } from '../src/server/rooms';
 
 /** A player's browser tab as the room sees it: a socket that records what the server sends. */
 function tab(token: string) {
@@ -217,5 +217,70 @@ describe('rooms: pausing and players who are away', () => {
     vi.advanceTimersByTime(30_000);
     expect(player(room, bSeat.id).autopilot).toBe(true);
     expect(player(room, bSeat.id).starter).toBeNull();
+  });
+});
+
+describe('rooms: coming back after closing the tab', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('a new tab of the same browser takes back the seat of a closed tab, and keeps it on reload', () => {
+    const room = new Room('TEST', () => undefined);
+    const a = tab('tok-a');
+    const b = tab('tok-b');
+    seatOf(room, a.conn);
+    const bSeat = seatOf(room, b.conn);
+    send(room, a.conn, { t: 'start' });
+    // The tab is closed.
+    room.detach(b.conn);
+    expect(player(room, bSeat.id).connected).toBe(false);
+    const b2 = tab('tok-b-new-tab');
+    expect(room.reclaim(b2.conn, ['tok-b'], false)?.id).toBe(bSeat.id);
+    expect(player(room, bSeat.id).connected).toBe(true);
+    expect(b2.sent.some((m) => m.t === 'game' && m.view.you === bSeat.id)).toBe(true);
+    // The seat answers to the new tab's token now, which is what that tab sends when it reloads.
+    expect(room.seatByToken('tok-b-new-tab')?.id).toBe(bSeat.id);
+    expect(room.seatByToken('tok-b')).toBeUndefined();
+  });
+
+  it('a seat another tab is using stays put, unless a game that has started is joined', () => {
+    const room = new Room('TEST', () => undefined);
+    const a = tab('tok-a');
+    const aSeat = seatOf(room, a.conn);
+    send(room, a.conn, { t: 'addBot' });
+    // A second tab in the lobby may be a second player on the same PC.
+    const a2 = tab('tok-a-second-tab');
+    expect(room.reclaim(a2.conn, ['tok-a'], false)).toBeNull();
+    expect(room.seatByToken('tok-a')?.conn).toBe(a.conn);
+    send(room, a.conn, { t: 'start' });
+    expect(room.reclaim(a2.conn, ['tok-a'], false)).toBeNull();
+    // Joining a game that has started can only mean that seat (say the first tab crashed).
+    expect(room.reclaim(a2.conn, ['tok-a'], true)?.id).toBe(aSeat.id);
+    expect(a.sent.at(-1)).toMatchObject({ t: 'error', message: 'You joined from another tab.' });
+  });
+
+  it('no seat comes back that its player left on purpose, nor a second seat for a tab that has one', () => {
+    const room = new Room('TEST', () => undefined);
+    const a = tab('tok-a');
+    const b = tab('tok-b');
+    seatOf(room, a.conn);
+    seatOf(room, b.conn);
+    send(room, a.conn, { t: 'addBot' });
+    send(room, a.conn, { t: 'start' });
+    room.leave(b.conn);
+    expect(room.reclaim(tab('tok-c').conn, ['tok-b', 'tok-unknown'], true)).toBeNull();
+    // The tab that left still has its own seat here (a bot plays it), so it takes no other.
+    expect(room.reclaim(b.conn, ['tok-a'], true)).toBeNull();
+    expect(room.seatByToken('tok-a')?.conn).toBe(a.conn);
+  });
+
+  it('a message carries only well-formed tokens, a few at most', () => {
+    expect(cleanTokens('A'.repeat(16))).toEqual([]);
+    expect(cleanTokens([1, null, 'short', 'x'.repeat(65), 'A'.repeat(16)])).toEqual(['A'.repeat(16)]);
+    expect(cleanTokens(Array.from({ length: 9 }, (_, i) => `token-number-${i}-xx`))).toHaveLength(4);
   });
 });

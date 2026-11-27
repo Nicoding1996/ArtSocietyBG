@@ -3,7 +3,7 @@ import { GENRE_INFO } from '../shared/content';
 import { waitingOnView } from '../shared/options';
 import type { GameEvent, GameView, Hung, Painting, PlayerView, RoomView, Tile } from '../shared/types';
 import type { Audio } from './audio';
-import type { Net } from './net';
+import type { Net, NetStatus } from './net';
 import { CELL_H } from './three/layout';
 import { PILE_SCALE } from './three/table';
 import { ASSIST_SCALE, EXCESS_SCALE, STAGE_SCALE } from './three/wall';
@@ -36,8 +36,13 @@ export class GameScreen {
   private prompts: Prompts;
   private ceremony: Ceremony;
   private view: GameView | null = null;
-  private queue: { view: GameView; events: GameEvent[] }[] = [];
+  /** `resync`: the first state after a reconnect, which settles an action sent before the drop. */
+  private queue: { view: GameView; events: GameEvent[]; resync: boolean }[] = [];
   private busy = false;
+  /** The connection dropped and has not come back yet. */
+  private offline = false;
+  /** The connection came back: the next game state the server sends is the whole table as it is now. */
+  private resync = false;
   private disposed = false;
   private shown = new Map<string, Shown>();
   private autoCam = localStorage.getItem(CAMERA_KEY) !== 'off';
@@ -71,8 +76,13 @@ export class GameScreen {
   ) {
     this.prompts = new Prompts({
       act: (action) => {
+        if (!this.net.send({ t: 'act', action })) {
+          toast('Not connected right now, so that was not sent. Try again in a moment.', 'error');
+          this.audio.error();
+          return false;
+        }
         this.audio.click();
-        this.net.send({ t: 'act', action });
+        return true;
       },
       place: (req) => {
         const me = this.me();
@@ -368,8 +378,21 @@ export class GameScreen {
   }
 
   receive(view: GameView, events: GameEvent[]) {
-    this.queue.push({ view, events });
+    this.queue.push({ view, events, resync: this.resync });
+    this.resync = false;
     if (!this.busy) void this.process();
+  }
+
+  /** The connection to the server dropped or came back (see Prompts.resynced). */
+  connection(s: NetStatus) {
+    if (s === 'closed') {
+      this.offline = true;
+      this.prompts.connectionLost();
+    } else if (s === 'open' && this.offline) {
+      this.offline = false;
+      // The server answers a reconnect with the whole table (see Room.attach).
+      this.resync = true;
+    }
   }
 
   private async process() {
@@ -393,6 +416,7 @@ export class GameScreen {
         }
       }
       this.apply(u.view);
+      if (u.resync) this.prompts.resynced();
     }
     this.world.tw.speed = 1;
     this.busy = false;
