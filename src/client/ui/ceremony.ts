@@ -108,7 +108,9 @@ export class Ceremony {
 
   private setAct(title: string, sub = '') {
     const a = this.root.querySelector('.gala-act');
-    if (a) a.innerHTML = `${esc(title)}${sub ? `<small>${sub}</small>` : ''}`;
+    // An act without a second line keeps an empty one, so the heading stays the same height and the score
+    // columns below it don't shift.
+    if (a) a.innerHTML = `${esc(title)}<small>${sub || '&nbsp;'}</small>`;
   }
 
   async play(v: GameView, me: string | null) {

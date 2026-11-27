@@ -628,7 +628,7 @@ export class Prompts {
   private renderBid(v: GameView, p: PlayerView): boolean {
     const L = this.local;
     const box = this.box(
-      'wide',
+      'wide bid',
       `${icon('cards')} Secret bids`,
       'Bid for the first choice',
       `Highest card chooses first. Each card is used once. Ties are settled by the card underneath: yours is ${disc(p.stackTop, p.color, 'tiny')}. Click a painting to try it on your wall.`,
@@ -636,7 +636,12 @@ export class Prompts {
     box.appendChild(this.lotRow(v, p, (id) => this.chooseLot(id, true)));
     const lot = v.lots.find((l) => l.id === L.lot);
     if (lot) this.tryLot(v, p, box, lot, 'win', () => this.endTry());
-    const back = lot ? this.button('Back to the table', 'ghost', () => this.endTry()) : null;
+    // Beside the wall on a short window this shrinks to its icon, so its name is also the tooltip.
+    const back = lot ? this.button(`${icon('table')}<span class="lbl">Back to the table</span>`, 'ghost to-table', () => this.endTry()) : null;
+    if (back) {
+      back.title = 'Back to the table';
+      back.setAttribute('aria-label', 'Back to the table');
+    }
     if (p.hasBid) {
       const waiting = v.players.filter((x) => !x.hasBid).map((x) => esc(x.name));
       // In the foot, so it stays in view when the paintings beside a wall need scrolling.

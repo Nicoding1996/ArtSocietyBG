@@ -989,6 +989,37 @@ svg.sh {
   row-gap: 2px;
 }
 
+/* Bidding beside your wall on a window up to 800px tall: a full row of paintings stays in view. The rules
+   line moves below the paintings (the panel at the table shows it first), the discs get smaller so they
+   take three rows, and "Back to the table" shrinks to its icon beside the seal button. */
+@media (max-height: 800px) {
+  .side .pr-box.bid .pr-body > .pr-hint {
+    order: 1;
+  }
+  .side .pr-box.bid .hand {
+    gap: 4px;
+  }
+  .side .pr-box.bid .bidcard {
+    width: 28px;
+    height: 28px;
+    font-size: 15px;
+    box-shadow: 0 0 0 2px var(--pc), 0 3px 8px rgba(0, 0, 0, 0.4);
+  }
+  .side .pr-box.bid .bidcard.on {
+    box-shadow: 0 0 0 2px var(--pc), 0 0 0 5px var(--gold), 0 6px 14px rgba(0, 0, 0, 0.5);
+  }
+  .side .pr-box.bid .bidcard:disabled {
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+  }
+  .side .pr-box.bid .hand ~ .pr-actions .btn.to-table {
+    flex: none;
+    padding-inline: 12px;
+  }
+  .side .pr-box.bid .hand ~ .pr-actions .btn.to-table .lbl {
+    display: none;
+  }
+}
+
 .btn.danger {
   border-color: rgba(255, 120, 110, 0.55);
   color: #ffc4bc;
@@ -1357,6 +1388,10 @@ svg.sh {
   max-height: 44vh;
   overflow-y: auto;
   scrollbar-width: thin;
+  /* Room for the pop-in bounce (a new line grows to about 106% before it settles), so it never counts as
+     overflow and flashes scrollbars. The negative margin keeps the lines where they were. */
+  padding: 2px 6px;
+  margin: -2px -6px;
 }
 
 /* The score columns stay out of the way until the museum's verdict is in, so the markers on the table can be seen. */

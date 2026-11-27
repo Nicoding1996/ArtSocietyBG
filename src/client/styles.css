@@ -884,9 +884,13 @@ input:focus {
   left: 0;
   right: 0;
   height: 56px;
-  display: flex;
+  /* The status stays centred while both sides fit beside it. When one side needs more room (a long name in
+     the status, or the view labels on a laptop screen), the status moves over a little instead of the
+     buttons wrapping onto two lines. */
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr);
+  column-gap: 10px;
   align-items: center;
-  justify-content: space-between;
   padding: 0 14px;
   background: linear-gradient(180deg, rgba(12, 10, 14, 0.85), rgba(12, 10, 14, 0));
 }
@@ -896,7 +900,6 @@ input:focus {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
 }
 
 .tb-right {
@@ -1582,20 +1585,25 @@ input:focus {
   margin-top: 6px;
 }
 
+/* The columns keep level bottoms without moving each other: each one is centred on the row, which stays put
+   as the row grows, then lifted by half of whatever it has grown past its minimum height. A column that gets
+   more lines grows upward and the others stay where they are. */
 .gala-cols {
   display: flex;
   gap: 12px;
   justify-content: center;
-  align-items: flex-end;
+  align-items: center;
   width: 100%;
   max-width: 1200px;
 }
 
 .gcol {
+  --gcol-min: 340px;
   position: relative;
   flex: 1;
   max-width: 216px;
-  min-height: 340px;
+  min-height: var(--gcol-min);
+  translate: 0 calc(var(--gcol-min) / 2 - 50%);
   display: flex;
   flex-direction: column;
   padding: 12px;
