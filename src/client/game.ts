@@ -100,6 +100,18 @@ export class GameScreen {
         if (me && !(this.world.view.kind === 'wall' && this.world.view.pid === me)) this.go({ kind: 'wall', pid: me, tight: true });
         this.refreshHud();
       },
+      tryOn: (on) => {
+        const me = this.me();
+        if (!me) return;
+        // The panel docks beside the wall (see needsMyWall), so the bid cards stay in reach.
+        this.hud.setDocked(this.needsMyWall());
+        this.lastNeed = on ? `wall:${me}` : 'table';
+        if (on && !(this.world.view.kind === 'wall' && this.world.view.pid === me)) this.go({ kind: 'wall', pid: me, tight: true });
+        else if (!on) this.go({ kind: 'table' });
+        else this.syncFold(this.world.view);
+        this.measureInsets();
+        this.refreshHud();
+      },
       unfold: () => {
         const v = this.world.view;
         if (v.kind !== 'wall') return;
@@ -487,6 +499,8 @@ export class GameScreen {
         await this.wait(120);
         break;
       case 'reveal': {
+        // Bidding is over: a painting being tried on the wall is put away, and the table shows the bids.
+        this.prompts.stopTrying();
         this.audio.drumroll(0.6);
         await this.wait(600);
         for (const p of next.players) void w.table.flipBid(w.tw, p.id, e.bids[p.id], p.stackCount);
@@ -659,7 +673,7 @@ export class GameScreen {
     }
   }
 
-  /** True when the local player is about to place something on their wall. */
+  /** True when the local player is about to place something on their wall, or tries a painting on it while bidding. */
   private needsMyWall(): boolean {
     const v = this.view;
     const me = this.me();
@@ -668,6 +682,7 @@ export class GameScreen {
     if (!p) return false;
     if (v.phase.kind === 'setup') return !!p.starter;
     if (v.phase.kind === 'acquire') return !!p.task || v.phase.order[v.phase.next] === me;
+    if (v.phase.kind === 'bid') return this.prompts.tryingOn;
     return false;
   }
 

@@ -66,11 +66,11 @@ When you are the only person at the table (everyone else is a bot, or away), Esc
 
 The **How to play** button in the top bar shows the same rules in the game.
 
-**Controls.** Point at your wall to preview a spot, click to pin it, then click again or press **Hang here**. Esc unpins (and otherwise opens the menu). Drag to look around, scroll to zoom, and click any painting to look closer. The top bar switches between the table, your wall and **Galleries** (every wall side by side, with dots showing who has room for each painting on offer), and has toggles for camera follow, sound and music.
+**Controls.** Point at your wall to preview a spot, click to pin it, then click again or press **Hang here**. Esc unpins (and otherwise opens the menu). While bidding, and when it is your pick, click a painting on offer to try it on your wall before you commit; **Back to the table** puts it away. Drag to look around, scroll to zoom, and click any painting to look closer. The top bar switches between the table, your wall and **Galleries** (every wall side by side, with dots showing who has room for each painting on offer), and has toggles for camera follow, sound and music.
 
 **Other players' walls.** Each player card shows their wall in miniature; rest the pointer on it for a large view, click it to go there. Keys: **1**–**4** a player's wall, **T** the table, **M** your wall, **G** the galleries.
 
-**The museum.** Click a type in the museum panel (or a museum pile on the table) to see every painting the museum holds and which ones would fit your wall. When a painting on offer has no room on your wall, its card says where it could go: your assistant, a swap with the museum, or excess.
+**The museum.** Click a type in the museum panel (or a museum pile on the table) to see every painting the museum holds and which ones would fit your wall. When a painting on offer has no room on your wall, its card says where it could go: your assistant, a swap with the museum, or excess. Click it to list the museum paintings you could swap it for, and click one of those to try it on your wall. When you do swap, you try the museum painting on your wall first, then **Swap and hang here** swaps and hangs it in one step.
 
 ### Rule choices to know about
 

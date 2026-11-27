@@ -1,7 +1,7 @@
 import { DECOR_INFO, GENRE_INFO, PAINTING_SIZES, RULES, decorList, sizeKey } from '../../shared/content';
 import { taskOptions } from '../../shared/options';
 import { ranking, scoreWall } from '../../shared/scoring';
-import { DECOR_SHAPES, type Action, type DecorShape, type GameView, type Genre, type Hung, type Painting, type PlayerView, type Tile } from '../../shared/types';
+import { DECOR_SHAPES, GENRES, type Action, type DecorShape, type GameView, type Genre, type Hung, type Painting, type PlayerView, type Tile } from '../../shared/types';
 import { cornersCovered, coversStar, fits, gridOf, legalSpots, matchingFrames, moveSpots, overlapsEyeline, sameGenre, starterSpots } from '../../shared/wall';
 import { el, esc, ordinal, renderIf } from './dom';
 import { icon } from './icons';
@@ -36,6 +36,11 @@ export interface PromptHost {
   movable(ids: string[] | null, onPick: (id: string) => void): void;
   /** Looks at your own wall (used when you start choosing a painting). */
   lookAtMyWall(): void;
+  /**
+   * While bidding, a painting on offer is being tried on my wall (`on`) or has been put away: the panel
+   * moves beside the wall and the camera turns to it, or both go back to the table.
+   */
+  tryOn(on: boolean): void;
   /** Opens the folded panel again while a wall stays on screen. */
   unfold(): void;
   /** Opens the museum window, at one type's paintings. */
@@ -51,10 +56,12 @@ interface Local {
   decor: DecorShape[];
   /** The tile hung this round that is being moved. */
   moving: string | null;
+  /** A same-type museum painting being tried on the wall in place of a painting that has no room. */
+  swap: string | null;
   pending: boolean;
 }
 
-const fresh = (key: string): Local => ({ key, sizes: [], bid: null, lot: null, which: 'new', decor: [], moving: null, pending: false });
+const fresh = (key: string): Local => ({ key, sizes: [], bid: null, lot: null, which: 'new', decor: [], moving: null, swap: null, pending: false });
 
 /**
  * Where a painting with no room on a player's wall could still go: the assistant (free now, or once the
@@ -78,9 +85,24 @@ export class Prompts {
   private swapMarked = false;
   /** Tiles a click on my wall picks up to move, collected while the panel is drawn. */
   private movableIds: string[] | null = null;
+  /** A museum swap on its way to the server, and the spot its painting was tried on (hung once it is in). */
+  private swapHang: { id: string; x: number; y: number } | null = null;
+  /** A painting on offer was just chosen: if it has no room, the panel scrolls to where it could go instead. */
+  private revealSwaps = false;
   folded = false;
 
   constructor(private host: PromptHost) {}
+
+  /** True while bidding with a painting on offer being tried on my wall. */
+  get tryingOn(): boolean {
+    const v = this.view;
+    return v?.phase.kind === 'bid' && v.lots.some((l) => l.id === this.local.lot);
+  }
+
+  /** Bidding is over: a painting still being tried on my wall is put away. */
+  stopTrying() {
+    if (this.tryingOn) this.endTry();
+  }
 
   /** A rebuilt or hidden panel loses the hovered swap button without a mouseleave, so its outlines go here. */
   private clearSwapMarks() {
@@ -97,6 +119,7 @@ export class Prompts {
 
   hide() {
     this.clearSwapMarks();
+    this.swapHang = null;
     this.root.innerHTML = '';
     this.root.dataset.sig = '';
     this.root.className = 'prompt';
@@ -126,9 +149,10 @@ export class Prompts {
   /** The panel animates in when its subject changes, not on every small update. */
   private animatedKey = '';
 
-  private send(a: Action) {
+  /** `keepPlace` leaves a painting being tried on the wall in place (sealing a bid does not end it). */
+  private send(a: Action, keepPlace = false) {
     this.local.pending = true;
-    this.host.stopPlace();
+    if (!keepPlace) this.host.stopPlace();
     this.host.act(a);
     this.rerender();
   }
@@ -143,9 +167,16 @@ export class Prompts {
     const key = `${ph.kind}:${v.round}:${taskSig}:${ph.kind === 'acquire' ? ph.next : ''}`;
     if (key !== this.local.key) this.local = fresh(key);
     if (!p || ph.kind === 'over') return this.hide();
+    if (this.swapHang) this.finishSwap(p);
     const L = this.local;
-    const sig = JSON.stringify([key, L, this.host.pinned(), this.folded, v.players.map((x) => [x.hasBid, !!x.task, !!x.starter]), v.supply, v.museum.city.length + v.museum.portrait.length + v.museum.still.length + v.museum.landscape.length]);
+    // A sealed bid has gone through: the panel stays usable, so paintings can still be tried on the wall.
+    if (ph.kind === 'bid' && p.hasBid && L.pending) L.pending = false;
+    // Which paintings the museum holds, not only how many: a swap leaves the count as it was.
+    const museum = GENRES.map((g) => v.museum[g].map((m) => m.id).join()).join('|');
+    const sig = JSON.stringify([key, L, this.host.pinned(), this.folded, v.players.map((x) => [x.hasBid, !!x.task, !!x.starter]), v.supply, museum]);
     renderIf(this.root, sig, () => {
+      // Redrawing the same step keeps the panel scrolled where it was (say, down to the museum paintings).
+      const scrolls = this.animatedKey === key ? [...this.root.querySelectorAll<HTMLElement>('.pr-body')].map((b) => b.scrollTop) : [];
       this.clearSwapMarks();
       this.root.className = `prompt ${L.pending ? 'pending' : ''} ${this.folded ? 'folded' : ''}`;
       this.root.innerHTML = '';
@@ -160,7 +191,7 @@ export class Prompts {
           this.renderSelect(v, p);
           break;
         case 'bid':
-          this.renderBid(v, p);
+          placing = this.renderBid(v, p);
           break;
         case 'acquire':
           placing = this.renderAcquire(v, p);
@@ -169,6 +200,13 @@ export class Prompts {
       if (!placing) this.host.stopPlace();
       this.host.movable(L.pending ? null : this.movableIds, (id) => this.startMove(id));
       for (const side of this.root.querySelectorAll('.task-side')) if (!side.childElementCount) side.remove();
+      this.root.querySelectorAll<HTMLElement>('.pr-body').forEach((b, i) => {
+        if (scrolls[i]) b.scrollTop = scrolls[i];
+      });
+      if (this.revealSwaps) {
+        this.revealSwaps = false;
+        this.scrollToSwaps();
+      }
       for (const body of this.root.querySelectorAll<HTMLElement>('.pr-body')) this.watchOverflow(body);
       if (this.folded) {
         // Folded while a wall is on screen: one line that says what the step is, and a way back.
@@ -216,6 +254,16 @@ export class Prompts {
     return f;
   }
 
+  /** Scrolls the panel down to where a painting with no room could go instead, its top first if it is tall. */
+  private scrollToSwaps() {
+    const ex = this.root.querySelector<HTMLElement>('.pr-body .no-room');
+    const body = ex?.closest<HTMLElement>('.pr-body');
+    if (!ex || !body) return;
+    const b = body.getBoundingClientRect();
+    const r = ex.getBoundingClientRect();
+    body.scrollTop += Math.min(r.top - b.top, Math.max(0, r.bottom - b.bottom));
+  }
+
   /** Fades the bottom edge of a body that has more to scroll to. */
   private watchOverflow(body: HTMLElement) {
     const update = () => body.classList.toggle('more', body.scrollHeight - body.scrollTop - body.clientHeight > 2);
@@ -230,7 +278,10 @@ export class Prompts {
     return b;
   }
 
-  /** Placement on my own wall with live feedback about the spot under the pointer. */
+  /**
+   * Placement on my own wall with live feedback about the spot under the pointer. `moving`: the tile is
+   * already on the wall and is lifted off while it moves. `onCancel`: what Esc does with nothing pinned.
+   */
   private place(
     v: GameView,
     p: PlayerView,
@@ -238,18 +289,18 @@ export class Prompts {
     spots: Spot[],
     mode: 'place' | 'preview',
     commit: (s: Spot) => void,
-    move?: { onCancel: () => void },
+    opts: { moving?: boolean; onCancel?: () => void } = {},
   ) {
     if (this.local.pending) return;
     this.host.place({
       tile,
       spots,
       mode,
-      onHover: (s) => this.showSpotInfo(v, p, tile, s, !!move),
+      onHover: (s) => this.showSpotInfo(v, p, tile, s, !!opts.moving),
       onPin: () => this.rerender(),
       onCommit: (s) => commit(s),
-      lift: move ? tile.id : undefined,
-      onCancel: move?.onCancel,
+      lift: opts.moving ? tile.id : undefined,
+      onCancel: opts.onCancel,
     });
   }
 
@@ -326,6 +377,106 @@ export class Prompts {
   private commitPinned() {
     const pin = this.host.pinned();
     if (pin && this.commitHandler) this.commitHandler(pin);
+  }
+
+  // ---------- trying paintings on the wall ----------
+
+  /** Chooses a painting on offer to try on my wall, while bidding or when it is my pick. */
+  private chooseLot(id: string, bidding: boolean) {
+    const L = this.local;
+    // Choosing the painting already being tried shows it again, rather than a museum painting in its place.
+    if (L.lot === id) L.swap = null;
+    L.lot = id;
+    this.revealSwaps = true;
+    if (bidding) this.host.tryOn(true);
+    else this.host.lookAtMyWall();
+    this.rerender();
+  }
+
+  /** Puts away the painting being tried on my wall while bidding, and turns back to the table. */
+  private endTry() {
+    this.local.lot = null;
+    this.local.swap = null;
+    this.host.stopPlace();
+    this.host.tryOn(false);
+    this.rerender();
+  }
+
+  /** Tries a museum painting on my wall in place of one that has no room. */
+  private trySwap(id: string) {
+    if (this.local.pending) return;
+    this.local.swap = id;
+    this.rerender();
+  }
+
+  private cancelSwap() {
+    this.local.swap = null;
+    this.rerender();
+  }
+
+  /**
+   * Tries a painting on offer on my wall without taking it. One with no room says where it could go
+   * instead and lists the same-type museum paintings it could be swapped for, which can be tried in its
+   * place. `when` words that list for bidding ('win') or picking ('take'); `onCancel` is what Esc does.
+   */
+  private tryLot(v: GameView, p: PlayerView, box: HTMLElement, lot: Painting, when: 'win' | 'take', onCancel?: () => void) {
+    const L = this.local;
+    const grid = gridOf(p.wall);
+    const spots = legalSpots(grid, lot.w, lot.h);
+    let tile = lot;
+    let cancel = onCancel;
+    if (!spots.length) {
+      const { helper, swaps } = noRoom(v, p, lot);
+      const ways = [
+        helper === 'free' ? 'your assistant can hold it' : helper === 'after' ? 'your assistant can hold it once its tile is hung' : '',
+        swaps ? `swap it at the museum (${swaps} fit${swaps === 1 ? 's' : ''})` : '',
+      ].filter(Boolean);
+      // Under the paintings on offer, with the museum paintings it could be swapped for right after.
+      const wrap = el('div', 'no-room', `<div class="warn">${icon('close')}<span>No room on your wall: ${ways.length ? ways.join(', or ') : `it would be excess (\u2212${RULES.excessPenalty})`}</span></div>`);
+      const options = v.museum[lot.genre].filter((m) => fits(grid, m.w, m.h));
+      if (options.length) wrap.appendChild(this.swapList(`If you ${when} it, you could swap it for a ${esc(GENRE_INFO[lot.genre].name)} from the museum. Click one to try it on your wall:`, options));
+      box.appendChild(wrap);
+      const chosen = options.find((m) => m.id === L.swap);
+      if (chosen) {
+        tile = chosen;
+        cancel = () => this.cancelSwap();
+      }
+    }
+    if (tile === lot) L.swap = null;
+    this.infoLine(this.foot(box));
+    this.place(v, p, tile, tile === lot ? spots : legalSpots(grid, tile.w, tile.h), 'preview', () => undefined, { onCancel: cancel });
+  }
+
+  /** Museum paintings to try on my wall instead of one that has no room; the one being tried is marked. */
+  private swapList(title: string, list: Painting[]): HTMLElement {
+    const ex = el('div', 'exchange', `<div class="ex-title">${icon('swap')}<span>${title}</span></div>`);
+    const row = el('div', 'ex-list');
+    for (const m of list) row.appendChild(tileCard(m, { compact: true, cls: this.local.swap === m.id ? 'selected' : '', onClick: this.local.pending ? undefined : () => this.trySwap(m.id) }));
+    ex.appendChild(row);
+    return ex;
+  }
+
+  /** Swaps the new painting for a museum one, then hangs that at the spot it was tried on. */
+  private swapAndHang(id: string, at: Spot) {
+    this.swapHang = { id, x: at.x, y: at.y };
+    this.send({ type: 'exchange', museum: id });
+  }
+
+  /**
+   * The swap has gone through once the museum painting is the next tile to hang: it goes to the spot it
+   * was tried on, if that is still free. After a refused swap the panel offers the choice again.
+   */
+  private finishSwap(p: PlayerView) {
+    const sh = this.swapHang!;
+    const head = p.task?.queue[0];
+    if (head?.from === 'museum' && head.tile.id === sh.id) {
+      this.swapHang = null;
+      const free = !p.task!.rewards.length && legalSpots(gridOf(p.wall), head.tile.w, head.tile.h).some((s) => s.x === sh.x && s.y === sh.y);
+      if (free) {
+        this.local.pending = true;
+        this.host.act({ type: 'hang', which: 'new', x: sh.x, y: sh.y });
+      }
+    } else if (!this.local.pending) this.swapHang = null;
   }
 
   // ---------- phases ----------
@@ -425,7 +576,7 @@ export class Prompts {
             ? `<span class="fit-alt" title="${helper === 'free' ? 'Your assistant is free and could hold it for later' : "Hang your assistant's tile first, then the assistant could hold this one"}">${icon('assistant')} assistant</span>`
             : '',
           swaps
-            ? `<button class="fit-alt swap" title="The museum has ${swaps} ${type} painting${swaps === 1 ? '' : 's'} that would fit your wall: you could swap this one for ${swaps === 1 ? 'it' : 'one of them'}. Click to see the museum.">${icon('swap')} ${swaps} to swap</button>`
+            ? `<button class="fit-alt swap" title="The museum has ${swaps} ${type} painting${swaps === 1 ? '' : 's'} that would fit your wall: you could swap this one for ${swaps === 1 ? 'it' : 'one of them'}. ${onPick ? `Click to try ${swaps === 1 ? 'it' : 'them'} on your wall.` : 'Click to see the museum.'}">${icon('swap')} ${swaps} to swap</button>`
             : '',
         ].join('');
         fit = `<span class="fit no">${icon('close')} no room</span>${
@@ -444,9 +595,11 @@ export class Prompts {
       if (swap) {
         swap.addEventListener('click', (e) => {
           e.stopPropagation();
-          this.host.museum(lot.genre);
+          // Choosing the painting lists the museum paintings it could be swapped for, to try on the wall.
+          if (onPick && !this.local.pending) onPick(lot.id);
+          else this.host.museum(lot.genre);
         });
-        // Enter on the button opens the museum rather than choosing the card.
+        // Enter on the button acts as its click, not as choosing the card a second time.
         swap.addEventListener('keydown', (e) => e.stopPropagation());
       }
       row.appendChild(card);
@@ -454,14 +607,29 @@ export class Prompts {
     return row;
   }
 
-  private renderBid(v: GameView, p: PlayerView) {
+  /** The secret bids. A painting on offer can be tried on my wall first, and after sealing the bid too. */
+  private renderBid(v: GameView, p: PlayerView): boolean {
     const L = this.local;
-    const box = this.box('wide', `${icon('cards')} Secret bids`, 'Bid for the first choice', `Highest card chooses first. Each card is used once. Ties are settled by the card underneath: yours is ${disc(p.stackTop, p.color, 'tiny')}.`);
-    box.appendChild(this.lotRow(v, p));
+    const box = this.box(
+      'wide',
+      `${icon('cards')} Secret bids`,
+      'Bid for the first choice',
+      `Highest card chooses first. Each card is used once. Ties are settled by the card underneath: yours is ${disc(p.stackTop, p.color, 'tiny')}. Click a painting to try it on your wall.`,
+    );
+    box.appendChild(this.lotRow(v, p, (id) => this.chooseLot(id, true)));
+    const lot = v.lots.find((l) => l.id === L.lot);
+    if (lot) this.tryLot(v, p, box, lot, 'win', () => this.endTry());
+    const back = lot ? this.button('Back to the table', 'ghost', () => this.endTry()) : null;
     if (p.hasBid) {
       const waiting = v.players.filter((x) => !x.hasBid).map((x) => esc(x.name));
-      box.appendChild(el('div', 'sealed', `${icon('check')} Your sealed bid: ${disc(p.bid, p.color, 'small')} ${waiting.length ? `Waiting for ${waiting.join(', ')}\u2026` : ''}`));
-      return;
+      // In the foot, so it stays in view when the paintings beside a wall need scrolling.
+      this.foot(box).prepend(el('div', 'sealed', `${icon('check')} Your sealed bid: ${disc(p.bid, p.color, 'small')} ${waiting.length ? `Waiting for ${waiting.join(', ')}\u2026` : ''}`));
+      if (back) {
+        const acts = el('div', 'pr-actions');
+        acts.appendChild(back);
+        this.foot(box).appendChild(acts);
+      }
+      return !!lot;
     }
     const hand = el('div', 'hand');
     const mine = new Set(p.hand ?? []);
@@ -480,8 +648,10 @@ export class Prompts {
     // The cards and the seal button stay in view; only the paintings scroll on a short window.
     this.foot(box).appendChild(hand);
     const acts = el('div', 'pr-actions');
-    acts.appendChild(this.button(L.bid ? `Seal my bid of ${L.bid}` : 'Choose a card', 'primary', () => L.bid && this.send({ type: 'bid', card: L.bid }), !L.bid));
+    if (back) acts.appendChild(back);
+    acts.appendChild(this.button(L.bid ? `Seal my bid of ${L.bid}` : 'Choose a card', 'primary', () => L.bid && this.send({ type: 'bid', card: L.bid }, true), !L.bid));
     this.foot(box).appendChild(acts);
+    return !!lot;
   }
 
   private orderStrip(v: GameView): HTMLElement {
@@ -509,24 +679,11 @@ export class Prompts {
     if (ph.order[ph.next] === p.id) {
       const box = this.box('wide pick', 'Your pick', 'Choose a painting', 'Click one to try it on your wall, then take it.');
       box.prepend(this.orderStrip(v));
-      box.appendChild(
-        this.lotRow(v, p, (id) => {
-          L.lot = id;
-          this.host.lookAtMyWall();
-          this.rerender();
-        }),
-      );
+      box.appendChild(this.lotRow(v, p, (id) => this.chooseLot(id, false)));
       const lot = v.lots.find((l) => l.id === L.lot);
       const acts = el('div', 'pr-actions');
       if (lot) {
-        const spots = legalSpots(gridOf(p.wall), lot.w, lot.h);
-        this.infoLine(this.foot(box));
-        if (!spots.length) {
-          const { helper, swaps } = noRoom(v, p, lot);
-          const ways = [helper === 'free' ? 'your assistant can hold it' : helper === 'after' ? 'your assistant can hold it once its tile is hung' : '', swaps ? `swap it at the museum (${swaps} fit${swaps === 1 ? 's' : ''})` : ''].filter(Boolean);
-          this.info!.innerHTML = `<span class="chip bad">${icon('close')} No room on your wall: ${ways.length ? ways.join(', or ') : `it would be excess (\u2212${RULES.excessPenalty})`}</span>`;
-        }
-        this.place(v, p, lot, spots, 'preview', () => undefined);
+        this.tryLot(v, p, box, lot, 'take');
         acts.appendChild(this.button(`Take <span class="ell">\u201c${esc(lot.title)}\u201d</span>`, 'primary', () => this.send({ type: 'take', lot: lot.id })));
       } else acts.appendChild(this.button('Choose a painting above', 'primary', () => undefined, true));
       this.foot(box).appendChild(acts);
@@ -689,6 +846,9 @@ export class Prompts {
     const acts = el('div', 'pr-actions');
     let placing = false;
     const fits = usingAssistant ? opt.assistantFits : opt.headFits;
+    // A museum painting being tried on the wall before swapping the new painting for it.
+    const swapping = !usingAssistant && !fits ? opt.exchange.find((m) => m.id === L.swap) : undefined;
+    if (!swapping) L.swap = null;
     if (fits) {
       this.infoLine(this.foot(box));
       this.foot(box).appendChild(acts);
@@ -700,10 +860,19 @@ export class Prompts {
       placing = true;
     } else {
       side.appendChild(el('div', 'warn', `${icon('close')} ${tile.kind === 'painting' ? 'This painting' : 'This decor'} does not fit anywhere on your wall.`));
+      if (swapping) this.infoLine(this.foot(box));
       this.foot(box).appendChild(acts);
+      if (swapping) {
+        const commit = (sp: Spot) => this.swapAndHang(swapping.id, sp);
+        this.commitHandler = commit;
+        this.pinnedActions(acts, 'Swap and hang here');
+        acts.appendChild(this.button('Cancel', 'ghost', () => this.cancelSwap()));
+        this.place(v, p, swapping, legalSpots(grid, swapping.w, swapping.h), 'place', commit, { onCancel: () => this.cancelSwap() });
+        placing = true;
+      }
     }
     if (!usingAssistant) {
-      if (opt.canAssist) acts.appendChild(this.button(`${icon('assistant')} Give to my assistant`, fits ? 'ghost' : 'primary', () => this.send({ type: 'assist' })));
+      if (opt.canAssist) acts.appendChild(this.button(`${icon('assistant')} Give to my assistant`, fits || swapping ? 'ghost' : 'primary', () => this.send({ type: 'assist' })));
       if (opt.canHangAssistant && p.assistant)
         acts.appendChild(
           this.button(`Hang my assistant's ${esc(tileName(p.assistant))} first`, 'ghost', () => {
@@ -714,11 +883,8 @@ export class Prompts {
         );
       if (!fits && head.tile.kind === 'painting' && head.from === 'auction') {
         if (opt.exchange.length) {
-          const ex = el('div', 'exchange', `<div class="ex-title">${icon('swap')} Or swap it for a ${esc(GENRE_INFO[head.tile.genre].name)} from the museum that fits:</div>`);
-          const list = el('div', 'ex-list');
-          for (const m of opt.exchange) list.appendChild(tileCard(m, { compact: true, onClick: L.pending ? undefined : () => this.send({ type: 'exchange', museum: m.id }) }));
-          ex.appendChild(list);
-          box.appendChild(ex);
+          // Each museum painting is tried on the wall first; the swap happens with "Swap and hang here".
+          box.appendChild(this.swapList(`Or swap it for a ${esc(GENRE_INFO[head.tile.genre].name)} from the museum that fits. Click one to try it on your wall:`, opt.exchange));
         } else if (!opt.canAssist && !opt.canExcess) {
           side.appendChild(el('div', 'pr-hint', 'Hang your assistant\u2019s tile to make room, then hand this one over.'));
         }
@@ -763,7 +929,7 @@ export class Prompts {
     acts.appendChild(this.button('Cancel', 'ghost', () => this.cancelMove()));
     // Another of this round's tiles can be picked up instead.
     this.movableIds = moves.filter((m) => m !== id);
-    this.place(v, p, t, moveSpots(p.wall, id), 'place', commit, { onCancel: () => this.cancelMove() });
+    this.place(v, p, t, moveSpots(p.wall, id), 'place', commit, { moving: true, onCancel: () => this.cancelMove() });
     return true;
   }
 }

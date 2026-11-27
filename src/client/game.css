@@ -965,6 +965,30 @@ svg.sh {
   flex-wrap: wrap;
 }
 
+/* A painting on offer with no room: where it could go, and the museum paintings to try instead. */
+.no-room {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Bidding beside your wall: smaller discs, so the paintings above keep more of the column. */
+.side .hand {
+  gap: 5px;
+}
+
+.side .bidcard {
+  width: 32px;
+  height: 32px;
+  font-size: 16.5px;
+}
+
+/* In the narrow column the sealed bid and who is still bidding take a line each, rather than squeezing. */
+.side .sealed {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
 .btn.danger {
   border-color: rgba(255, 120, 110, 0.55);
   color: #ffc4bc;
