@@ -16,6 +16,9 @@ installFrameArt();
 if (params.has('gallery')) {
   // A wall of sample paintings in every shape, handy for tuning the art generators.
   void import('./artpage').then((m) => m.showArtPage(ui, params));
+} else if (params.has('decor')) {
+  // Every theme's decor tiles on a lit wall, handy for tuning their models.
+  void import('./decorpage').then((m) => m.showDecorPage(ui, params));
 } else {
   void import('./app').then((m) => {
     const app = new m.App(ui);

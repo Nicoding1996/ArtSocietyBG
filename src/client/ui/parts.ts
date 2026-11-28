@@ -1,7 +1,7 @@
-import { DECOR_INFO, FRAME_INFO } from '../../shared/content';
+import { FRAME_INFO } from '../../shared/content';
 import type { FrameId, Genre, Tile } from '../../shared/types';
 import { artImg } from '../art/generate';
-import { typeIcon, typeInfo } from '../theme';
+import { decorDef, typeIcon, typeInfo } from '../theme';
 import { el, esc } from './dom';
 import { icon } from './icons';
 
@@ -35,7 +35,7 @@ export function sizeShape(w: number, h: number, unit = 9): string {
 export const sizeText = (w: number, h: number) => `${w}\u00d7${h}`;
 
 export function tileName(t: Tile): string {
-  return t.kind === 'painting' ? t.title : DECOR_INFO[t.shape].name;
+  return t.kind === 'painting' ? t.title : decorDef(t.shape).name;
 }
 
 /** Largest size with the tile's proportions (cells are 1.5 times wider than tall) inside a box. */
@@ -55,7 +55,7 @@ export function tileThumb(t: Tile, cls = '', boxW = 140, boxH = 92): HTMLElement
   d.style.setProperty('--fw', `${Math.max(2, Math.round(Math.min(size.w, size.h) * 0.09))}px`);
   if (t.kind === 'decor') {
     d.innerHTML = `<span class="decor-ic">${icon('decor')}</span>${shieldsHtml(t.points)}`;
-    d.title = `${DECOR_INFO[t.shape].name} \u00b7 ${t.points} point${t.points === 1 ? '' : 's'}`;
+    d.title = `${decorDef(t.shape).name} \u00b7 ${t.points} point${t.points === 1 ? '' : 's'}`;
     return d;
   }
   d.style.setProperty('--gc', typeInfo(t.genre).color);
@@ -87,7 +87,7 @@ export function tileCard(t: Tile, o: TileCardOpts = {}): HTMLElement {
       ${o.footer ?? ''}`;
   } else {
     cap.innerHTML = `
-      <div class="tc-title">${esc(DECOR_INFO[t.shape].name)}</div>
+      <div class="tc-title">${esc(decorDef(t.shape).name)}</div>
       <div class="tc-meta">${shieldsHtml(t.points)}<span class="muted">${sizeText(t.w, t.h)} decor</span></div>
       ${o.footer ?? ''}`;
   }

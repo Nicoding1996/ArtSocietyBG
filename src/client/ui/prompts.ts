@@ -3,7 +3,7 @@ import { taskOptions } from '../../shared/options';
 import { ranking, scoreWall } from '../../shared/scoring';
 import { DECOR_SHAPES, GENRES, type Action, type DecorShape, type GameView, type Genre, type Hung, type Painting, type PlayerView, type Tile } from '../../shared/types';
 import { cornersCovered, coversStar, fits, gridOf, legalSpots, matchingFrames, moveSpots, overlapsEyeline, sameGenre, starterSpots } from '../../shared/wall';
-import { aTypeName, typeInfo, typeName } from '../theme';
+import { aTypeName, decorDef, theme, typeInfo, typeName } from '../theme';
 import { el, esc, ordinal, renderIf } from './dom';
 import { icon } from './icons';
 import { disc, dot, genreTag, shieldsHtml, sizeShape, sizeText, tileCard, tileName } from './parts';
@@ -386,7 +386,7 @@ export class Prompts {
     this.movableIds = ids;
     const one = ids.length === 1 ? p.wall.find((h) => h.tile.id === ids[0])?.tile : null;
     const what = one
-      ? `${one.kind === 'painting' ? `\u201c${esc(one.title)}\u201d` : `the ${esc(DECOR_INFO[one.shape].name.toLowerCase())}`} until you press Done: click it on your wall`
+      ? `${one.kind === 'painting' ? `\u201c${esc(one.title)}\u201d` : `the ${esc(decorDef(one.shape).noun)}`} until you press Done: click it on your wall`
       : `the ${ids.length} tiles you hung this round until you press Done: click one on your wall`;
     const kept = p.task?.locked?.length ? ' Paintings that earned decor stay put.' : '';
     box.appendChild(el('div', 'pr-hint moves-hint', `${icon('swap')}<span>You can still move ${what}.${kept}</span>`));
@@ -742,7 +742,7 @@ export class Prompts {
       const total = L.decor.reduce((s, d) => s + DECOR_INFO[d].points, 0);
       // Sold-out sizes stay on show, so it is clear why they cannot be taken.
       for (const s of DECOR_SHAPES.filter((x) => DECOR_INFO[x].points <= k)) {
-        const d = DECOR_INFO[s];
+        const d = decorDef(s);
         const takenNow = L.decor.filter((x) => x === s).length;
         const left = v.decor[s] - takenNow;
         const fits = legalSpots(grid, d.w, d.h).length > 0;
@@ -766,10 +766,10 @@ export class Prompts {
         const wrap = el(
           'div',
           'decor-swap',
-          `<div class="pr-hint">${icon('swap')} The supply has run out of ${swap.frees.map((s) => esc(DECOR_INFO[s].plural)).join(' and ')}. Swap decor on your wall for a longer tile to put some back. Your points stay the same.</div>`,
+          `<div class="pr-hint">${icon('swap')} The supply has run out of ${swap.frees.map((s) => esc(decorDef(s).plural)).join(' and ')}. Swap decor on your wall for a longer tile to put some back. Your points stay the same.</div>`,
         );
         const b = this.button(
-          `${icon('swap')} Swap ${esc(decorList(swap.removed))} for a ${esc(DECOR_INFO[swap.shape].name.toLowerCase())}`,
+          `${icon('swap')} Swap ${esc(decorList(theme(), swap.removed))} for a ${esc(decorDef(swap.shape).noun)}`,
           opt.decorShapes.length ? 'ghost' : 'primary',
           () => {
             this.clearSwapMarks();
@@ -796,7 +796,7 @@ export class Prompts {
         const chips = el('div', 'size-chips');
         chips.innerHTML = L.decor.length ? '' : '<span class="muted">Add decor above</span>';
         L.decor.forEach((s, i) => {
-          const c = el('button', 'chip removable', `${esc(DECOR_INFO[s].name)} ${icon('close')}`);
+          const c = el('button', 'chip removable', `${esc(decorDef(s).name)} ${icon('close')}`);
           c.addEventListener('click', () => {
             L.decor.splice(i, 1);
             this.rerender();
@@ -937,7 +937,7 @@ export class Prompts {
     const box = this.box(
       'task',
       `${icon('swap')} Rearranging`,
-      t.kind === 'painting' ? `Move \u201c${esc(t.title)}\u201d` : `Move the ${esc(DECOR_INFO[t.shape].name.toLowerCase())}`,
+      t.kind === 'painting' ? `Move \u201c${esc(t.title)}\u201d` : `Move the ${esc(decorDef(t.shape).noun)}`,
       t.kind === 'painting' ? 'A move never earns decor, even beside a matching frame.' : '',
     );
     const row = el('div', 'task-row');

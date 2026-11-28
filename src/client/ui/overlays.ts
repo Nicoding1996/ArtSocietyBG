@@ -1,7 +1,7 @@
-import { DECOR_INFO, FRAME_INFO, RULES } from '../../shared/content';
+import { FRAME_INFO, RULES } from '../../shared/content';
 import { ranking } from '../../shared/scoring';
 import type { GameView, Genre, PlayerView, Tile, TieBreak } from '../../shared/types';
-import { typeInfo } from '../theme';
+import { decorDef, typeInfo } from '../theme';
 import { el, esc, sleep } from './dom';
 import { icon } from './icons';
 import { disc, dot, frameTag, genreTag, shieldsHtml, sizeText, tileThumb } from './parts';
@@ -173,7 +173,7 @@ export function tooltip(html: string | null, x = 0, y = 0) {
 
 export function tileTooltip(t: Tile, owner: PlayerView | undefined, v: GameView | null): string {
   if (t.kind === 'decor') {
-    return `<div class="tt-title">${esc(DECOR_INFO[t.shape].name)}</div><div class="tt-text">${shieldsHtml(t.points)} Decor, worth ${t.points} at the end${owner ? ` \u00b7 ${esc(owner.name)}` : ''}</div>`;
+    return `<div class="tt-title">${esc(decorDef(t.shape).name)}</div><div class="tt-text">${shieldsHtml(t.points)} Decor, worth ${t.points} at the end${owner ? ` \u00b7 ${esc(owner.name)}` : ''}</div>`;
   }
   const mult = v ? ranking(v.prestige).multipliers[t.genre] : null;
   const pile = !owner && v?.museum[t.genre].some((m) => m.id === t.id) ? v.museum[t.genre] : null;
@@ -224,7 +224,7 @@ export function lightbox(t: Tile, owner: PlayerView | undefined, v: GameView | n
       el(
         'div',
         'lb-info',
-        `<div class="lb-title">${esc(DECOR_INFO[t.shape].name)}</div>
+        `<div class="lb-title">${esc(decorDef(t.shape).name)}</div>
          <div class="lb-sub">Decor \u00b7 ${sizeText(t.w, t.h)}${owner ? ` \u00b7 ${esc(owner.name)}'s wall` : ''}</div>
          <div class="lb-meta">${shieldsHtml(t.points)} worth ${t.points} point${t.points === 1 ? '' : 's'} at the end</div>
          <p class="lb-blurb">Players earn decor by hanging a painting against others in the same style of frame.</p>`,

@@ -132,7 +132,9 @@ export const FRAME_INFO: Record<FrameId, FrameDef> = {
 
 export interface DecorDef {
   name: string;
-  /** Lower-case plural, for sentences like "3 candle sconces". */
+  /** The name inside a sentence, after "a" or "the": "candle sconce", "pair of Kyoshi war fans". */
+  noun: string;
+  /** Plural, for sentences like "3 candle sconces". */
   plural: string;
   w: number;
   h: number;
@@ -140,12 +142,23 @@ export interface DecorDef {
 }
 
 export const DECOR_INFO: Record<DecorShape, DecorDef> = {
-  '1x1': { name: 'Candle sconce', plural: 'candle sconces', w: 1, h: 1, points: 1 },
-  '2x1': { name: 'Pair of cameos', plural: 'pairs of cameos', w: 2, h: 1, points: 2 },
-  '1x2': { name: 'Potted fern', plural: 'potted ferns', w: 1, h: 2, points: 2 },
-  '3x1': { name: 'Curio shelf', plural: 'curio shelves', w: 3, h: 1, points: 3 },
-  '1x3': { name: 'Pier mirror', plural: 'pier mirrors', w: 1, h: 3, points: 3 },
+  '1x1': { name: 'Candle sconce', noun: 'candle sconce', plural: 'candle sconces', w: 1, h: 1, points: 1 },
+  '2x1': { name: 'Pair of cameos', noun: 'pair of cameos', plural: 'pairs of cameos', w: 2, h: 1, points: 2 },
+  '1x2': { name: 'Potted fern', noun: 'potted fern', plural: 'potted ferns', w: 1, h: 2, points: 2 },
+  '3x1': { name: 'Curio shelf', noun: 'curio shelf', plural: 'curio shelves', w: 3, h: 1, points: 3 },
+  '1x3': { name: 'Pier mirror', noun: 'pier mirror', plural: 'pier mirrors', w: 1, h: 3, points: 3 },
 };
+
+/** The Avatar theme's decor: the same shapes and points under other names (and other models in the room). */
+export const AVATAR_DECOR_INFO: Record<DecorShape, DecorDef> = {
+  '1x1': { ...DECOR_INFO['1x1'], name: 'Paper lantern', noun: 'paper lantern', plural: 'paper lanterns' },
+  '2x1': { ...DECOR_INFO['2x1'], name: 'Kyoshi war fans', noun: 'pair of Kyoshi war fans', plural: 'pairs of Kyoshi war fans' },
+  '1x2': { ...DECOR_INFO['1x2'], name: 'Potted jasmine', noun: 'potted jasmine', plural: 'potted jasmines' },
+  '3x1': { ...DECOR_INFO['3x1'], name: 'Tea shelf', noun: 'tea shelf', plural: 'tea shelves' },
+  '1x3': { ...DECOR_INFO['1x3'], name: 'Glider staff', noun: 'glider staff', plural: 'glider staffs' },
+};
+
+export const decorInfo = (theme: ThemeId): Record<DecorShape, DecorDef> => (theme === 'avatar' ? AVATAR_DECOR_INFO : DECOR_INFO);
 
 export function makeDecor(shape: DecorShape, id: string): Decor {
   const d = DECOR_INFO[shape];
@@ -153,10 +166,11 @@ export function makeDecor(shape: DecorShape, id: string): Decor {
 }
 
 /** Names a group of decor tiles: "3 candle sconces", "a candle sconce and a pair of cameos". */
-export function decorList(tiles: readonly { shape: DecorShape }[]): string {
+export function decorList(theme: ThemeId, tiles: readonly { shape: DecorShape }[]): string {
+  const info = decorInfo(theme);
   const counts = new Map<DecorShape, number>();
   for (const t of tiles) counts.set(t.shape, (counts.get(t.shape) ?? 0) + 1);
-  const parts = [...counts].map(([s, n]) => (n === 1 ? `a ${DECOR_INFO[s].name.toLowerCase()}` : `${n} ${DECOR_INFO[s].plural}`));
+  const parts = [...counts].map(([s, n]) => (n === 1 ? `a ${info[s].noun}` : `${n} ${info[s].plural}`));
   return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : (parts[0] ?? '');
 }
 

@@ -1,7 +1,7 @@
-import { DECOR_INFO, RULES } from '../../shared/content';
+import { RULES } from '../../shared/content';
 import { ranking } from '../../shared/scoring';
 import { DECOR_SHAPES, type GameView, type Genre, type PlayerView } from '../../shared/types';
-import { typeInfo } from '../theme';
+import { decorDef, typeInfo } from '../theme';
 import type { ChatPanel } from './chat';
 import { el, esc, ordinal, renderIf } from './dom';
 import { icon } from './icons';
@@ -253,7 +253,7 @@ export class Hud {
           </div>`;
         })
         .join('');
-      const decorLeft = DECOR_SHAPES.map((s) => `${DECOR_INFO[s].name} ${v.decor[s]}`).join(' \u00b7 ');
+      const decorLeft = DECOR_SHAPES.map((s) => `${decorDef(s).name} ${v.decor[s]}`).join(' \u00b7 ');
       const inMuseum = Object.values(v.museum).reduce((a, m) => a + m.length, 0);
       this.museum.innerHTML = `
         <div class="panel-title">${icon('hall')} The Museum <small>prestige \u00b7 multiplier now</small></div>

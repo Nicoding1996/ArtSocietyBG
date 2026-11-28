@@ -1,4 +1,4 @@
-import { DECOR_INFO, RULES, aTypeNoun, buildPaintings, decorList, emptyDecorSupply, genreInfo, makeDecor, parseSize, sizeKey, typeNoun } from './content';
+import { DECOR_INFO, RULES, aTypeNoun, buildPaintings, decorInfo, decorList, emptyDecorSupply, genreInfo, makeDecor, parseSize, sizeKey, typeNoun } from './content';
 import { nextRandom, shuffle } from './rng';
 import { computeResults } from './scoring';
 import {
@@ -43,6 +43,9 @@ function log(g: GameState, kind: LogKind, text: string, pid?: string) {
 
 /** A painting in a log line: its title, then its type in the game's theme and its size. */
 export const describe = (g: GameState, p: Painting) => `\u201c${p.title}\u201d (${genreInfo(g.theme)[p.genre].name}, ${p.w}\u00d7${p.h})`;
+
+/** A decor tile inside a sentence, in the game's theme: "candle sconce", "paper lantern". */
+const decorNoun = (g: GameState, s: DecorShape) => decorInfo(g.theme)[s].noun;
 
 function emptyMuseum(): Record<Genre, Painting[]> {
   return { city: [], portrait: [], still: [], landscape: [] };
@@ -265,7 +268,7 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
           t.rewards.push({ points: matches.length, from: 'frames' });
           log(g, 'decor', `${p.name} matched ${matches.length} frame${matches.length === 1 ? '' : 's'} and earns decor worth up to ${matches.length}.`, p.id);
         }
-      } else log(g, 'decor', `${p.name} hangs a ${DECOR_INFO[tile.shape].name.toLowerCase()} (+${tile.points}).`, p.id);
+      } else log(g, 'decor', `${p.name} hangs a ${decorNoun(g, tile.shape)} (+${tile.points}).`, p.id);
       if (isFull(gridOf(p.wall)) && !g.end) trigger(g, ev, 'full', p);
       return null;
     }
@@ -277,7 +280,7 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       p.assistant = head.tile;
       t.queue.shift();
       ev.push({ t: 'assist', pid: p.id, tile: head.tile, from: head.from });
-      log(g, 'hang', `${p.name} gives ${head.tile.kind === 'painting' ? describe(g, head.tile) : `a ${DECOR_INFO[head.tile.shape].name.toLowerCase()}`} to their assistant.`, p.id);
+      log(g, 'hang', `${p.name} gives ${head.tile.kind === 'painting' ? describe(g, head.tile) : `a ${decorNoun(g, head.tile.shape)}`} to their assistant.`, p.id);
       return null;
     }
     case 'exchange': {
@@ -329,7 +332,7 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
         counts.set(s, (counts.get(s) ?? 0) + 1);
         total += DECOR_INFO[s].points;
       }
-      for (const [s, c] of counts) if (g.decor[s] < c) return `No ${DECOR_INFO[s].name.toLowerCase()} left in the supply.`;
+      for (const [s, c] of counts) if (g.decor[s] < c) return `No ${decorNoun(g, s)} left in the supply.`;
       if (k < 4 && a.shapes.length !== 1) return 'Choose one decor tile.';
       if (total > k) return `Your decor may be worth at most ${k}.`;
       const tiles: Decor[] = a.shapes.map((s) => {
@@ -340,14 +343,14 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       const from: IncomingFrom = reward.from === 'excess' ? 'excess' : 'reward';
       t.queue.unshift(...tiles.map((tile) => ({ tile, from })));
       ev.push({ t: 'decor', pid: p.id, tiles, reward: k });
-      log(g, 'decor', `${p.name} takes ${tiles.map((d) => `a ${DECOR_INFO[d.shape].name.toLowerCase()}`).join(' and ')}.`, p.id);
+      log(g, 'decor', `${p.name} takes ${tiles.map((d) => `a ${decorNoun(g, d.shape)}`).join(' and ')}.`, p.id);
       return null;
     }
     case 'swapDecor': {
       if (!t.rewards.length) return 'Decor can only be swapped while you choose a decor tile.';
       if (!DECOR_SHAPES.some((s) => g.decor[s] === 0)) return 'Decor can only be swapped once the supply has run out of a size.';
       if (!(DECOR_SHAPES as readonly string[]).includes(a.shape)) return 'Unknown decor.';
-      if (g.decor[a.shape] <= 0) return `No ${DECOR_INFO[a.shape].name.toLowerCase()} left in the supply.`;
+      if (g.decor[a.shape] <= 0) return `No ${decorNoun(g, a.shape)} left in the supply.`;
       const sw = decorSwaps(g, p).find((s) => s.shape === a.shape && s.x === a.x && s.y === a.y);
       if (!sw) return 'A swap must exactly replace 2 or 3 decor tiles on your wall, at least one of a size that has run out.';
       const gone = new Set(sw.removed.map((d) => d.id));
@@ -359,7 +362,7 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       const tile = makeDecor(sw.shape, `d${++g.decorSeq}`);
       p.wall.push({ tile, x: sw.x, y: sw.y });
       ev.push({ t: 'swapDecor', pid: p.id, removed: sw.removed, tile, x: sw.x, y: sw.y });
-      log(g, 'decor', `${p.name} swaps ${decorList(sw.removed)} on their wall for a ${DECOR_INFO[sw.shape].name.toLowerCase()}, which puts them back in the supply.`, p.id);
+      log(g, 'decor', `${p.name} swaps ${decorList(g.theme, sw.removed)} on their wall for a ${decorNoun(g, sw.shape)}, which puts them back in the supply.`, p.id);
       return null;
     }
     case 'skipDecor': {
@@ -378,7 +381,7 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       g.decor[head.tile.shape]++;
       t.queue.shift();
       ev.push({ t: 'discard', pid: p.id, tile: head.tile });
-      log(g, 'decor', `${p.name} has no room for the ${DECOR_INFO[head.tile.shape].name.toLowerCase()} and puts it back.`, p.id);
+      log(g, 'decor', `${p.name} has no room for the ${decorNoun(g, head.tile.shape)} and puts it back.`, p.id);
       return null;
     }
     case 'move': {
@@ -398,7 +401,7 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       const faux = h.tile.kind === 'painting' ? sameGenre(rest, gridOf(rest), h.tile, a.x, a.y) : [];
       p.wall[i] = { tile: h.tile, x: a.x, y: a.y };
       ev.push({ t: 'move', pid: p.id, tile: h.tile, fromX: h.x, fromY: h.y, x: a.x, y: a.y, faux });
-      log(g, 'hang', `${p.name} moves ${h.tile.kind === 'painting' ? describe(g, h.tile) : `the ${DECOR_INFO[h.tile.shape].name.toLowerCase()}`} on their wall.`, p.id);
+      log(g, 'hang', `${p.name} moves ${h.tile.kind === 'painting' ? describe(g, h.tile) : `the ${decorNoun(g, h.tile.shape)}`} on their wall.`, p.id);
       if (h.tile.kind === 'painting' && faux.length) log(g, 'warn', `Faux pas! ${p.name}'s ${typeNoun(g.theme, h.tile.genre)} touches another of its type: they will not score.`, p.id);
       return null;
     }
@@ -530,7 +533,7 @@ function advance(g: GameState, p: PlayerState, ev: GameEvent[]) {
         g.decor[head.tile.shape]++;
         t.queue.shift();
         ev.push({ t: 'discard', pid: p.id, tile: head.tile });
-        log(g, 'decor', `${p.name} has no room for the ${DECOR_INFO[head.tile.shape].name.toLowerCase()} and puts it back.`, p.id);
+        log(g, 'decor', `${p.name} has no room for the ${decorNoun(g, head.tile.shape)} and puts it back.`, p.id);
         continue;
       }
       return;

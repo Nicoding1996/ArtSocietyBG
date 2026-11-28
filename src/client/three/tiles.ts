@@ -3,6 +3,8 @@ import type { Decor, Painting, Tile } from '../../shared/types';
 import { FRAME_WIDTH, TILE_MARGIN, artCanvas, canvasSize, type ArtKey } from '../art/generate';
 import { buildFrame } from './frames';
 import { CELL_H, CELL_W } from './layout';
+import { theme } from '../theme';
+import { avatarDecorProp } from './avatarDecor';
 import { brass, candleWax, flame, gilt, mahogany, mirror, walnut } from './materials';
 import { cameoTexture, genreBadgeTexture, shieldsTexture, tileBackTexture, toTexture } from './textures';
 
@@ -339,11 +341,24 @@ export function decorMesh(d: Decor, o: TileMeshOpts = {}): THREE.Group {
   const W = d.w * CELL_W;
   const H = d.h * CELL_H;
   inner.add(backingMesh(W, H, o.backing ?? defaultBacking));
+  const seed = Number(d.id.replace(/\D/g, '')) || 7;
   const prop =
-    d.shape === '1x1' ? sconce() : d.shape === '2x1' ? cameos() : d.shape === '1x2' ? fern() : d.shape === '3x1' ? curios(Number(d.id.replace(/\D/g, '')) || 7) : pierMirror();
+    theme() === 'avatar'
+      ? avatarDecorProp(d.shape, seed)
+      : d.shape === '1x1'
+        ? sconce()
+        : d.shape === '2x1'
+          ? cameos()
+          : d.shape === '1x2'
+            ? fern()
+            : d.shape === '3x1'
+              ? curios(seed)
+              : pierMirror();
   prop.position.z = BACK_D;
   prop.traverse((x) => {
-    if ((x as THREE.Mesh).isMesh) x.castShadow = true;
+    if ((x as THREE.Mesh).isMesh && !x.userData.noShadow) x.castShadow = true;
+    // Candle flames and lantern paper flicker in the frame loop.
+    if (x.userData.flicker !== undefined) liveFlames.add(x);
   });
   inner.add(prop);
   inner.add(shields(d.points, W, H, BACK_D + 0.004));
@@ -409,6 +424,10 @@ export function flickerFlames(scene: THREE.Scene, t: number) {
       continue;
     }
     const k = f.userData.flicker as number;
-    f.scale.set(1, 1.9 + Math.sin(t * 13 + k) * 0.25 + Math.sin(t * 7.3 + k * 2) * 0.15, 1);
+    const wave = Math.sin(t * 13 + k) * 0.25 + Math.sin(t * 7.3 + k * 2) * 0.15;
+    // A paper lantern's glow wavers instead of a flame stretching.
+    const glow = f.userData.glow as number | undefined;
+    if (glow === undefined) f.scale.set(1, 1.9 + wave, 1);
+    else ((f as THREE.Mesh).material as THREE.MeshStandardMaterial).emissiveIntensity = glow * (1 + wave * 0.3);
   }
 }

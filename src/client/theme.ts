@@ -1,5 +1,5 @@
-import { genreInfo, type GenreDef } from '../shared/content';
-import type { Genre, ThemeId } from '../shared/types';
+import { decorInfo, genreInfo, type DecorDef, type GenreDef } from '../shared/content';
+import type { DecorShape, Genre, ThemeId } from '../shared/types';
 
 /**
  * The theme this client is showing: the room's choice in the lobby, the game's once it starts. Only names,
@@ -24,6 +24,9 @@ export function aTypeName(g: Genre): string {
   const name = typeName(g);
   return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
 }
+
+/** A decor tile's name ("Paper lantern"), its name inside a sentence and its plural, in the current theme. */
+export const decorDef = (s: DecorShape): DecorDef => decorInfo(current)[s];
 
 const ELEMENTS: Record<Genre, string> = { city: 'water', landscape: 'earth', portrait: 'fire', still: 'air' };
 

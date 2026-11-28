@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { advancePrestige, applyAction, createGame, viewFor, waitingOn } from '../src/shared/engine';
 import { botDecide, fallbackActions } from '../src/shared/bot';
-import { DECOR_INFO, PAINTING_SIZES, RULES, aTypeNoun, buildPaintings, makeDecor, scenesOf, sizeKey } from '../src/shared/content';
+import { AVATAR_DECOR_INFO, DECOR_INFO, PAINTING_SIZES, RULES, aTypeNoun, buildPaintings, decorList, makeDecor, scenesOf, sizeKey } from '../src/shared/content';
 import { computeResults, ranking, scoreWall } from '../src/shared/scoring';
 import { taskOptions } from '../src/shared/options';
 import { makeRng } from '../src/shared/rng';
-import { FRAMES, GENRES, type Action, type FrameId, type GameState, type Genre, type Hung, type IncomingFrom, type Painting, type PlayerState, type Tile } from '../src/shared/types';
+import { DECOR_SHAPES, FRAMES, GENRES, type Action, type FrameId, type GameState, type Genre, type Hung, type IncomingFrom, type Painting, type PlayerState, type Tile } from '../src/shared/types';
 import { canHang, gridOf, moveSpots, wallGroups } from '../src/shared/wall';
 import { checkInvariants, playBotGame } from '../scripts/botgame';
 
@@ -881,6 +881,35 @@ describe('themes', () => {
     for (const k of kinds) expect(['Water', 'Earth', 'Fire', 'Air']).toContain(k);
     expect(aTypeNoun('avatar', 'still')).toBe('an Air painting');
     expect(aTypeNoun('classic', 'still')).toBe('a still life');
+  });
+
+  it('decor takes its names from the theme and keeps its shapes and points', () => {
+    for (const s of DECOR_SHAPES) {
+      const { w, h, points } = AVATAR_DECOR_INFO[s];
+      expect({ w, h, points }).toEqual({ w: DECOR_INFO[s].w, h: DECOR_INFO[s].h, points: DECOR_INFO[s].points });
+    }
+    const some = [{ shape: '1x1' }, { shape: '2x1' }, { shape: '1x1' }] as const;
+    expect(decorList('avatar', some)).toBe('2 paper lanterns and a pair of Kyoshi war fans');
+    expect(decorList('classic', some)).toBe('2 candle sconces and a pair of cameos');
+    const g = createGame({ seed: 7, players, theme: 'avatar' }).state;
+    const p = g.players[0];
+    p.starter = null;
+    p.wall = [
+      { tile: art('city', 'ivory', 1, 2), x: 2, y: 2 },
+      { tile: art('portrait', 'ivory', 1, 2), x: 5, y: 2 },
+      { tile: art('still', 'ivory', 2, 2), x: 3, y: 0 },
+      { tile: art('city', 'ivory', 2, 2), x: 3, y: 4 },
+    ];
+    giveTask(g, p, art('landscape', 'ivory', 2, 2));
+    act(g, p.id, { type: 'hang', which: 'new', x: 3, y: 2 });
+    g.decor['3x1'] = 0;
+    expect(reject(g, p.id, { type: 'decor', shapes: ['3x1', '1x1'] })).toBe('No tea shelf left in the supply.');
+    act(g, p.id, { type: 'decor', shapes: ['2x1', '1x1'] });
+    act(g, p.id, { type: 'hang', which: 'new', x: 6, y: 2 });
+    const text = g.log.map((l) => l.text).join('\n');
+    expect(text).toContain('P0 takes a pair of Kyoshi war fans and a paper lantern.');
+    expect(text).toContain('P0 hangs a pair of Kyoshi war fans (+2).');
+    expect(text).not.toMatch(/sconce|cameo/);
   });
 });
 
