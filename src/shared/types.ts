@@ -10,6 +10,10 @@ export type FrameId = (typeof FRAMES)[number];
 export const DECOR_SHAPES = ['1x1', '2x1', '1x2', '3x1', '1x3'] as const;
 export type DecorShape = (typeof DECOR_SHAPES)[number];
 
+/** Looks a table can play in. The rules are the same in every theme; only names and paintings change. */
+export const THEMES = ['classic', 'avatar'] as const;
+export type ThemeId = (typeof THEMES)[number];
+
 export const HATS = ['beret', 'tophat', 'bowler', 'flower'] as const;
 export type HatId = (typeof HATS)[number];
 

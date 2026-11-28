@@ -15,7 +15,7 @@ installFrameArt();
 
 if (params.has('gallery')) {
   // A wall of sample paintings in every shape, handy for tuning the art generators.
-  void import('./artpage').then((m) => m.showArtPage(ui, Number(params.get('gallery')) || 1));
+  void import('./artpage').then((m) => m.showArtPage(ui, params));
 } else {
   void import('./app').then((m) => {
     const app = new m.App(ui);

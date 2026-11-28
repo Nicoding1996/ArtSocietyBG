@@ -1,4 +1,4 @@
-import { DECOR_SHAPES, FRAMES, GENRES, type Decor, type DecorShape, type FrameId, type Genre, type Painting } from './types';
+import { DECOR_SHAPES, FRAMES, GENRES, type Decor, type DecorShape, type FrameId, type Genre, type Painting, type ThemeId } from './types';
 import { pick, shuffle, type Rand } from './rng';
 
 /** Every rule number lives here. */
@@ -80,6 +80,19 @@ export const GENRE_INFO: Record<Genre, GenreDef> = {
   landscape: { name: 'Landscape', short: 'Landscape', color: '#5aa86a', blurb: 'Fields, ponds, mountains and the open sea.' },
 };
 
+/**
+ * The Avatar theme paints each type as one of the four nations, in the colour the type already has.
+ * The type ids stay the same, so the rules never see the theme.
+ */
+export const AVATAR_GENRE_INFO: Record<Genre, GenreDef> = {
+  city: { name: 'Water', short: 'Water', color: '#4f8ad0', blurb: 'The Water Tribes of the poles: cities of ice, ocean spirits and the people of the sea.' },
+  portrait: { name: 'Fire', short: 'Fire', color: '#cf5470', blurb: 'The Fire Nation: palaces in a volcano, dragons and royal grudges.' },
+  still: { name: 'Air', short: 'Air', color: '#dba640', blurb: 'The Air Nomads: temples above the clouds, sky bison and monks at play.' },
+  landscape: { name: 'Earth', short: 'Earth', color: '#5aa86a', blurb: 'The Earth Kingdom: walled cities, mountain passes and stubborn kings.' },
+};
+
+export const genreInfo = (theme: ThemeId): Record<Genre, GenreDef> => (theme === 'avatar' ? AVATAR_GENRE_INFO : GENRE_INFO);
+
 export interface FrameDef {
   name: string;
   color: string;
@@ -128,8 +141,11 @@ export const PLAYER_COLORS = ['#f08a24', '#1fb5a8', '#9b6bf0', '#ff7eb6', '#d9d2
 
 export const BOT_NAMES = ['Vincent van Bot', 'Pablo Pixasso', 'Frida Kahlobot', 'Claude Monay', 'Rembot', 'Edgar Degauss'];
 
+/** Compositions per type, each with two lists of title parts: a title is one from each. */
+type SceneTable = Record<Genre, Record<string, [string[], string[]]>>;
+
 /** Compositions the art generator knows, per type, with title parts in the same order. */
-const SCENES: Record<Genre, Record<string, [string[], string[]]>> = {
+const SCENES: SceneTable = {
   landscape: {
     lilies: [['Water Lilies', 'The Lily Pond', 'Willow Reflections', 'Pond in the Shade', 'Lilies and Clouds'], ['at Dawn', 'in June', 'after the Rain', 'near the Mill', 'at Dusk', 'in Late Summer']],
     poppies: [['Poppy Field', 'Summer Meadow', 'A Walk in the Poppies', 'Red Hillside', 'Meadow with Parasol'], ['at Noon', 'in July', 'near the Village', 'under Drifting Clouds', 'in the Breeze']],
@@ -160,12 +176,34 @@ const SCENES: Record<Genre, Record<string, [string[], string[]]>> = {
   },
 };
 
-export function scenesOf(genre: Genre): string[] {
-  return Object.keys(SCENES[genre]);
+/**
+ * The Avatar theme's compositions, by nation (see AVATAR_GENRE_INFO). Water is painted so far; the other
+ * nations follow. A title only names what every painting of its scene shows.
+ */
+const AVATAR_SCENES: SceneTable = {
+  city: {
+    icecity: [['The City of Ice', 'The Northern Water Tribe', 'Canals of the North', 'The Great Ice Wall', 'The Water Gate'], ['at Moonrise', 'under the Full Moon', 'in the Long Night', 'in Deep Winter', 'by Moonlight']],
+    oasis: [['The Spirit Oasis', 'Tui and La', 'Moon and Ocean', 'Push and Pull', 'Two Koi'], ['', '', 'at Midnight', 'in Balance', 'Circling']],
+    southpole: [['The Southern Water Tribe', 'The Watchtower', 'Village at the South Pole', 'Home on the Ice', 'The Snow Wall'], ['', 'in Winter', 'after the Snowfall', 'at the Edge of the World', 'on a Still Day']],
+    katara: [['Katara', 'The Waterbender', 'Katara of the Southern Tribe', 'Master Katara', 'Daughter of the South'], ['', '', 'with Her Mother\u2019s Necklace', 'at Fourteen', 'in Blue']],
+    sokka: [['Sokka', 'The Warrior of the South', 'Sokka of the Southern Tribe', 'Meat and Sarcasm Guy', 'The Plan Guy'], ['', '', 'with Boomerang', 'on Watch', 'at Fifteen']],
+    korra: [['Korra', 'Avatar Korra', 'Korra of the Southern Tribe', 'The Southern Avatar', 'The Avatar of Republic City'], ['', '', 'at Seventeen', 'in Blue', 'at the South Pole']],
+    keepsakes: [['Boomerang and Necklace', 'Keepsakes of the South', 'Treasures of the Water Tribe', 'Still Life with Boomerang', 'Things from Home'], ['', '', 'on a Fur Pelt', 'by Lamplight', 'in Blue and White']],
+  },
+  portrait: {},
+  still: {},
+  landscape: {},
+};
+
+const sceneTable = (theme: ThemeId): SceneTable => (theme === 'avatar' ? AVATAR_SCENES : SCENES);
+
+export function scenesOf(genre: Genre, theme: ThemeId = 'classic'): string[] {
+  return Object.keys(sceneTable(theme)[genre]);
 }
 
-function makeTitle(r: Rand, genre: Genre, scene: string, used: Set<string>): string {
-  const [a, b] = SCENES[genre][scene];
+/** A title for a painting of `scene` that isn't in `used` yet (and adds it there). */
+export function makeTitle(r: Rand, genre: Genre, scene: string, used: Set<string>, theme: ThemeId = 'classic'): string {
+  const [a, b] = sceneTable(theme)[genre][scene];
   for (let i = 0; i < 24; i++) {
     const suffix = pick(r, b);
     const t = suffix ? `${pick(r, a)} ${suffix}` : pick(r, a);

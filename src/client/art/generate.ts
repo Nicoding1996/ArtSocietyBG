@@ -8,6 +8,7 @@ import { portraitScene } from './portrait';
 import { postScene } from './postimpressionism';
 import { stillScene } from './still';
 import { ukiyoeScene } from './ukiyoe';
+import { waterScene } from './avatar/water';
 
 /** Gap between a tile's edge and its frame, and the frame's width, in wall units (cell height = 1). */
 export const TILE_MARGIN = 0.05;
@@ -40,6 +41,14 @@ const SCENES: Record<string, (p: Painter) => void> = {
   flowers: (p) => stillScene(p, 'flowers'),
   bottles: (p) => stillScene(p, 'bottles'),
   guitar: (p) => cubistScene(p, 'guitar'),
+  // Avatar theme: the Water Tribes.
+  icecity: (p) => waterScene(p, 'icecity'),
+  oasis: (p) => waterScene(p, 'oasis'),
+  southpole: (p) => waterScene(p, 'southpole'),
+  katara: (p) => waterScene(p, 'katara'),
+  sokka: (p) => waterScene(p, 'sokka'),
+  korra: (p) => waterScene(p, 'korra'),
+  keepsakes: (p) => waterScene(p, 'keepsakes'),
 };
 
 function sceneFor(art: ArtKey): (p: Painter) => void {
