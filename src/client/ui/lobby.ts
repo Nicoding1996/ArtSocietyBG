@@ -1,5 +1,5 @@
-import { PLAYER_COLORS, RULES } from '../../shared/content';
-import { HATS, type ClientMessage, type RoomView } from '../../shared/types';
+import { PLAYER_COLORS, RULES, THEME_INFO } from '../../shared/content';
+import { HATS, THEMES, type ClientMessage, type RoomView } from '../../shared/types';
 import { copyText, el, esc, renderIf } from './dom';
 import { icon } from './icons';
 import { toast } from './overlays';
@@ -100,7 +100,15 @@ export class LobbyView {
 
     renderIf(this.rules, JSON.stringify([room.settings, isHost]), () => {
       const on = room.settings.autopilot;
+      const look = room.settings.theme;
       this.rules.innerHTML = `
+        <div class="setting theme-setting ${isHost ? '' : 'locked'}" ${isHost ? '' : 'title="Only the host can change this."'}>
+          <span class="s-text"><b>Paintings: ${esc(THEME_INFO[look].name)}</b><small>${esc(THEME_INFO[look].blurb)}</small></span>
+          <div class="theme-pick" role="radiogroup" aria-label="Paintings">${THEMES.map(
+            (t) =>
+              `<button class="seg-btn ${t === look ? 'on' : ''}" data-theme="${t}" role="radio" aria-checked="${t === look}" title="${esc(THEME_INFO[t].hint)}" ${isHost ? '' : 'disabled'}>${esc(THEME_INFO[t].name)}</button>`,
+          ).join('')}</div>
+        </div>
         <label class="setting ${isHost ? '' : 'locked'}" title="${isHost ? '' : 'Only the host can change this. '}A player who leaves the game is always replaced by a bot.">
           <input type="checkbox" class="s-autopilot" ${on ? 'checked' : ''} ${isHost ? '' : 'disabled'} />
           <span class="switch" aria-hidden="true"></span>
@@ -112,6 +120,12 @@ export class LobbyView {
             }</small></span>
         </label>`;
       this.rules.querySelector<HTMLInputElement>('.s-autopilot')!.addEventListener('change', (e) => this.send({ t: 'settings', autopilot: (e.target as HTMLInputElement).checked }));
+      this.rules.querySelectorAll<HTMLButtonElement>('.theme-pick .seg-btn').forEach((b) =>
+        b.addEventListener('click', () => {
+          const t = THEMES.find((x) => x === b.dataset.theme);
+          if (t && t !== look) this.send({ t: 'settings', theme: t });
+        }),
+      );
     });
 
     renderIf(this.controls, JSON.stringify([isHost, room.players.length]), () => {

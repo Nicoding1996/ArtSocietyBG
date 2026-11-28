@@ -1,6 +1,7 @@
-import { DECOR_INFO, FRAME_INFO, GENRE_INFO } from '../../shared/content';
+import { DECOR_INFO, FRAME_INFO } from '../../shared/content';
 import type { FrameId, Genre, Tile } from '../../shared/types';
 import { artImg } from '../art/generate';
+import { typeIcon, typeInfo } from '../theme';
 import { el, esc } from './dom';
 import { icon } from './icons';
 
@@ -9,8 +10,8 @@ export function dot(color: string, cls = ''): string {
 }
 
 export function genreTag(g: Genre, short = false): string {
-  const info = GENRE_INFO[g];
-  return `<span class="gt" style="--gc:${info.color}">${icon(g)}<span>${esc(short ? info.short : info.name)}</span></span>`;
+  const info = typeInfo(g);
+  return `<span class="gt" style="--gc:${info.color}">${icon(typeIcon(g))}<span>${esc(short ? info.short : info.name)}</span></span>`;
 }
 
 export function frameTag(f: FrameId): string {
@@ -57,9 +58,9 @@ export function tileThumb(t: Tile, cls = '', boxW = 140, boxH = 92): HTMLElement
     d.title = `${DECOR_INFO[t.shape].name} \u00b7 ${t.points} point${t.points === 1 ? '' : 's'}`;
     return d;
   }
-  d.style.setProperty('--gc', GENRE_INFO[t.genre].color);
+  d.style.setProperty('--gc', typeInfo(t.genre).color);
   d.appendChild(artImg(t, 'thumb-img'));
-  if (Math.min(size.w, size.h) >= 26) d.insertAdjacentHTML('beforeend', `<span class="thumb-genre">${icon(t.genre)}</span>`);
+  if (Math.min(size.w, size.h) >= 26) d.insertAdjacentHTML('beforeend', `<span class="thumb-genre">${icon(typeIcon(t.genre))}</span>`);
   return d;
 }
 

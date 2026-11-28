@@ -181,6 +181,8 @@ export interface GameResults {
 export interface GameState {
   seed: number;
   rng: number;
+  /** The theme's paintings and names are used throughout; the rules never look at it. */
+  theme: ThemeId;
   round: number;
   /** Index into players of the auctioneer (holder of the gavel). */
   auctioneer: number;
@@ -299,6 +301,8 @@ export interface LobbyPlayer {
 export interface RoomSettings {
   /** A bot plays for anyone disconnected for a while or sitting idle, until they are back. Off: the game waits. */
   autopilot: boolean;
+  /** The look the next game is played in, chosen by the host for the whole table. */
+  theme: ThemeId;
 }
 
 export interface RoomView {
@@ -328,7 +332,8 @@ export type ClientMessage =
   | { t: 'react'; emoji: string }
   | { t: 'back' }
   | { t: 'toLobby' }
-  | { t: 'settings'; autopilot: boolean }
+  /** The host changes one setting or more; the others stay as they are. */
+  | { t: 'settings'; autopilot?: boolean; theme?: ThemeId }
   /** The host lets a bot play a disconnected player's seat until that player comes back. */
   | { t: 'handOver'; id: string }
   | { t: 'pause'; on: boolean };

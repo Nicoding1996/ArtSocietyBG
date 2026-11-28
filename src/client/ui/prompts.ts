@@ -1,8 +1,9 @@
-import { DECOR_INFO, GENRE_INFO, PAINTING_SIZES, RULES, decorList, sizeKey } from '../../shared/content';
+import { DECOR_INFO, PAINTING_SIZES, RULES, decorList, sizeKey } from '../../shared/content';
 import { taskOptions } from '../../shared/options';
 import { ranking, scoreWall } from '../../shared/scoring';
 import { DECOR_SHAPES, GENRES, type Action, type DecorShape, type GameView, type Genre, type Hung, type Painting, type PlayerView, type Tile } from '../../shared/types';
 import { cornersCovered, coversStar, fits, gridOf, legalSpots, matchingFrames, moveSpots, overlapsEyeline, sameGenre, starterSpots } from '../../shared/wall';
+import { aTypeName, typeInfo, typeName } from '../theme';
 import { el, esc, ordinal, renderIf } from './dom';
 import { icon } from './icons';
 import { disc, dot, genreTag, shieldsHtml, sizeShape, sizeText, tileCard, tileName } from './parts';
@@ -355,7 +356,7 @@ export class Prompts {
       const n = matches.length;
       if (n && moving) chips.push(`<span class="chip">${icon('frame')} ${n} matching frame${n === 1 ? '' : 's'}, but a move earns no decor</span>`);
       else if (n) chips.push(`<span class="chip gold">${icon('frame')} ${n} matching frame${n === 1 ? '' : 's'}: decor worth up to ${n}</span>`);
-      if (faux.length) chips.push(`<span class="chip bad">${icon('close')} Faux pas: touches ${faux.length === 1 ? 'another' : faux.length} ${esc(GENRE_INFO[tile.genre].name)}${faux.length === 1 ? '' : 's'}, they won't score</span>`);
+      if (faux.length) chips.push(`<span class="chip bad">${icon('close')} Faux pas: touches ${faux.length === 1 ? 'another' : faux.length} ${esc(typeName(tile.genre))}${faux.length === 1 ? '' : 's'}, they won't score</span>`);
       if (overlapsEyeline(s.y, tile.h)) chips.push(`<span class="chip">${icon('eye')} In the eyeline</span>`);
     }
     const corners = cornersCovered(tile.w, tile.h, s.x, s.y);
@@ -453,7 +454,7 @@ export class Prompts {
       // Under the paintings on offer, with the museum paintings it could be swapped for right after.
       const wrap = el('div', 'no-room', `<div class="warn">${icon('close')}<span>No room on your wall: ${ways.length ? ways.join(', or ') : `it would be excess (\u2212${RULES.excessPenalty})`}</span></div>`);
       const options = v.museum[lot.genre].filter((m) => fits(grid, m.w, m.h));
-      if (options.length) wrap.appendChild(this.swapList(`If you ${when} it, you could swap it for a ${esc(GENRE_INFO[lot.genre].name)} from the museum. Click one to try it on your wall:`, options));
+      if (options.length) wrap.appendChild(this.swapList(`If you ${when} it, you could swap it for ${esc(aTypeName(lot.genre))} from the museum. Click one to try it on your wall:`, options));
       box.appendChild(wrap);
       const chosen = options.find((m) => m.id === L.swap);
       if (chosen) {
@@ -587,7 +588,7 @@ export class Prompts {
       let fit = `<span class="fit ok">${icon('check')} fits</span>`;
       if (!legalSpots(grid, lot.w, lot.h).length) {
         const { helper, swaps } = noRoom(v, p, lot);
-        const type = esc(GENRE_INFO[lot.genre].name);
+        const type = esc(typeInfo(lot.genre).name);
         const alts = [
           helper
             ? `<span class="fit-alt" title="${helper === 'free' ? 'Your assistant is free and could hold it for later' : "Hang your assistant's tile first, then the assistant could hold this one"}">${icon('assistant')} assistant</span>`
@@ -906,13 +907,13 @@ export class Prompts {
       if (!fits && head.tile.kind === 'painting' && head.from === 'auction') {
         if (opt.exchange.length) {
           // Each museum painting is tried on the wall first; the swap happens with "Swap and hang here".
-          box.appendChild(this.swapList(`Or swap it for a ${esc(GENRE_INFO[head.tile.genre].name)} from the museum that fits. Click one to try it on your wall:`, opt.exchange));
+          box.appendChild(this.swapList(`Or swap it for ${esc(aTypeName(head.tile.genre))} from the museum that fits. Click one to try it on your wall:`, opt.exchange));
         } else if (!opt.canAssist && !opt.canExcess) {
           side.appendChild(el('div', 'pr-hint', 'Hang your assistant\u2019s tile to make room, then hand this one over.'));
         }
         if (opt.canExcess)
           acts.appendChild(this.button(`${icon('box')} Store as excess (\u2212${RULES.excessPenalty})`, opt.canAssist ? 'ghost danger' : 'primary danger', () => this.send({ type: 'excess' })));
-        if (!opt.exchange.length && !opt.canExcess && opt.canAssist) side.appendChild(el('div', 'pr-hint', `No ${esc(GENRE_INFO[head.tile.genre].name)} in the museum fits either.`));
+        if (!opt.exchange.length && !opt.canExcess && opt.canAssist) side.appendChild(el('div', 'pr-hint', `No ${esc(typeName(head.tile.genre))} in the museum fits either.`));
       }
       if (opt.canDiscard) acts.appendChild(this.button('Put it back', 'ghost', () => this.send({ type: 'discard' })));
     } else {
@@ -924,7 +925,7 @@ export class Prompts {
         }),
       );
     }
-    if (head.tile.kind === 'painting' && !usingAssistant) side.prepend(el('div', 'pr-hint tight', `${genreTag(head.tile.genre)} Avoid touching another ${esc(GENRE_INFO[head.tile.genre].name)}. Match its frame for decor.`));
+    if (head.tile.kind === 'painting' && !usingAssistant) side.prepend(el('div', 'pr-hint tight', `${genreTag(head.tile.genre)} Avoid touching another ${esc(typeName(head.tile.genre))}. Match its frame for decor.`));
     this.movesHint(box, opt.moves, p);
     return placing;
   }

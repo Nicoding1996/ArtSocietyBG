@@ -93,6 +93,29 @@ export const AVATAR_GENRE_INFO: Record<Genre, GenreDef> = {
 
 export const genreInfo = (theme: ThemeId): Record<Genre, GenreDef> => (theme === 'avatar' ? AVATAR_GENRE_INFO : GENRE_INFO);
 
+/** The themes as the lobby offers them: one line under the setting, and a longer hint on each theme's button. */
+export const THEME_INFO: Record<ThemeId, { name: string; blurb: string; hint: string }> = {
+  classic: {
+    name: 'Classic',
+    blurb: 'Painted in the manner of famous painters.',
+    hint: 'City life, portraits, still lifes and landscapes, from the impressionists to the cubists',
+  },
+  avatar: {
+    name: 'Avatar',
+    blurb: 'Fan art of Avatar: The Last Airbender.',
+    hint: 'The four nations, Water, Earth, Fire and Air, each in its own style, with no subject twice in a game',
+  },
+};
+
+/** A painting of this type inside a sentence: "still life" in lower case, but "Water painting", the nation being a name. */
+export const typeNoun = (theme: ThemeId, g: Genre): string => (theme === 'avatar' ? `${AVATAR_GENRE_INFO[g].name} painting` : GENRE_INFO[g].name.toLowerCase());
+
+/** The same with its article: "a still life", "an Air painting". */
+export function aTypeNoun(theme: ThemeId, g: Genre): string {
+  const noun = typeNoun(theme, g);
+  return `${/^[aeiou]/i.test(noun) ? 'an' : 'a'} ${noun}`;
+}
+
 export interface FrameDef {
   name: string;
   color: string;

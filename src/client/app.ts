@@ -2,10 +2,11 @@ import { BOT_NAMES, PLAYER_COLORS } from '../shared/content';
 import { botDecide } from '../shared/bot';
 import { applyAction, createGame, viewFor, waitingOn } from '../shared/engine';
 import { makeRng } from '../shared/rng';
-import { HATS, type GameState, type RoomView, type ServerMessage } from '../shared/types';
+import { HATS, type GameState, type RoomView, type ServerMessage, type ThemeId } from '../shared/types';
 import { Audio } from './audio';
 import { GameScreen } from './game';
 import { Net } from './net';
+import { setTheme, theme } from './theme';
 import { World } from './three/world';
 import { ChatPanel } from './ui/chat';
 import { el } from './ui/dom';
@@ -16,11 +17,12 @@ import { closeModal, initOverlays, showHelp, toast } from './ui/overlays';
 
 const NAME_KEY = 'artsociety.name';
 
-/** A salon half-way through an evening, played out by bots, for the home and lobby backdrop. */
-function demoState(): GameState {
+/** A salon half-way through an evening, played out by bots, for the home and lobby backdrop, in the room's theme. */
+function demoState(look: ThemeId): GameState {
   const { state } = createGame({
     seed: 20240611,
     players: [0, 1, 2, 3].map((i) => ({ id: `demo${i}`, name: BOT_NAMES[i], color: PLAYER_COLORS[i], hat: HATS[i], isBot: true })),
+    theme: look,
   });
   const r = makeRng(7);
   for (let guard = 0; guard < 4000 && state.phase.kind !== 'over' && state.round < 9; guard++) {
@@ -87,20 +89,28 @@ export class App {
   private showDemo() {
     void this.world.ready.then(() => {
       if (this.screen === 'game') return;
-      this.demo ??= demoState();
-      const d = this.demo;
+      // Paintings have the same ids in every theme, so walls start empty when the theme changes.
+      const fresh = this.demo?.theme !== theme();
+      if (fresh) this.demo = demoState(theme());
+      const d = this.demo!;
       this.world.setSeats(
         d.players.map((p) => ({ id: p.id, name: p.name, color: p.color, hat: p.hat })),
         null,
       );
       for (const p of d.players) {
         const wall = this.world.walls.get(p.id);
+        if (fresh) {
+          wall?.syncWall([]);
+          wall?.setAssistant(null);
+          wall?.setExcess([]);
+        }
         wall?.syncWall(p.wall);
         wall?.setAssistant(p.assistant);
         wall?.setExcess(p.excess);
         wall?.setStaging([]);
       }
       this.world.table.setPrestige(d.prestige);
+      if (fresh) this.world.table.setMuseum({ city: [], portrait: [], still: [], landscape: [] });
       this.world.table.setMuseum(d.museum);
       this.world.table.setSupply(d.supply.length);
       this.world.table.clearLots();
@@ -124,12 +134,15 @@ export class App {
         this.net.room = m.room.code;
         this.net.rememberSeat(m.room.code);
         history.replaceState(null, '', `?room=${m.room.code}`);
+        // Settings only change in the lobby, so during a game this is the game's theme too.
+        setTheme(m.room.settings.theme);
         if (m.room.status === 'lobby') this.showLobby();
         else if (this.screen !== 'game') this.showGame();
         this.game?.roomChanged(m.room);
         break;
       }
       case 'game':
+        setTheme(m.view.theme);
         if (this.screen !== 'game') {
           this.showGame();
           if (this.room) this.game!.roomChanged(this.room);
@@ -180,7 +193,8 @@ export class App {
     if (this.screen !== 'home') this.clearScreen();
     const wasGame = this.screen === 'game';
     this.screen = 'home';
-    if (wasGame || !this.demo) this.showDemo();
+    setTheme('classic');
+    if (wasGame || this.demo?.theme !== theme()) this.showDemo();
     else this.world.setDemo(true);
     const code = (new URLSearchParams(location.search).get('room') ?? '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
     const wrap = el('div', 'home');
@@ -207,7 +221,7 @@ export class App {
       const wasGame = this.screen === 'game';
       this.clearScreen();
       this.screen = 'lobby';
-      if (wasGame || !this.demo) this.showDemo();
+      if (wasGame || this.demo?.theme !== theme()) this.showDemo();
       else this.world.setDemo(true);
       this.lobby = new LobbyView(
         (msg) => this.net.send(msg),
@@ -216,7 +230,7 @@ export class App {
         this.chat,
       );
       this.screenEl.appendChild(this.lobby.root);
-    }
+    } else if (this.demo?.theme !== theme()) this.showDemo();
     this.lobby!.render(this.room, this.me, this.lan);
   }
 

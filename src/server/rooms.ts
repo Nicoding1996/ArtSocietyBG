@@ -6,6 +6,7 @@ import { BOT_NAMES, PLAYER_COLORS, RULES } from '../shared/content';
 import { eventsAnimationMs } from '../shared/timing';
 import {
   HATS,
+  THEMES,
   type Action,
   type ClientMessage,
   type GameEvent,
@@ -74,7 +75,7 @@ export class Room {
   game: GameState | null = null;
   lastActivity = Date.now();
   /** Chosen by the host in the lobby. */
-  settings: RoomSettings = { autopilot: false };
+  settings: RoomSettings = { autopilot: false, theme: 'classic' };
   /** The only human at the table paused the game; the bots wait. */
   paused = false;
   private botTimer: NodeJS.Timeout | null = null;
@@ -342,6 +343,7 @@ export class Room {
         const { state, events } = createGame({
           seed: randomInt(2 ** 31),
           players: this.seats.map((s) => ({ id: s.id, name: s.name, color: s.color, hat: s.hat, isBot: s.isBot })),
+          theme: this.settings.theme,
         });
         this.game = state;
         for (const p of state.players) p.connected = this.seats.find((s) => s.id === p.id)?.conn != null || p.isBot;
@@ -370,7 +372,9 @@ export class Room {
         return;
       case 'settings': {
         if (!isHost || this.status !== 'lobby') return err('Only the host can change the settings, in the lobby.');
-        this.settings.autopilot = msg.autopilot === true;
+        if (msg.theme !== undefined && !THEMES.includes(msg.theme)) return err('Unknown theme.');
+        if (msg.autopilot !== undefined) this.settings.autopilot = msg.autopilot === true;
+        if (msg.theme !== undefined) this.settings.theme = msg.theme;
         this.broadcastRoom();
         return;
       }

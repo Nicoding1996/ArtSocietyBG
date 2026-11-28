@@ -2204,6 +2204,30 @@ button.fit-alt:focus-visible {
   font-size: 12px;
   line-height: 1.45;
 }
+.lobby-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* The paintings the table plays with: one line about the choice, then a button per theme, on one row so the lobby still fits. */
+.setting.theme-setting {
+  align-items: center;
+  cursor: default;
+}
+.theme-pick {
+  flex: none;
+  margin-left: auto;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.theme-pick .seg-btn {
+  padding: 7px 14px;
+  color: var(--ivory);
+}
+.theme-pick .seg-btn:not(:disabled):not(.on):hover {
+  border-color: var(--line-strong);
+}
 
 /* Short windows (a laptop at 125% or a small browser window): tighter panels so their buttons fit. */
 @media (max-height: 680px) {

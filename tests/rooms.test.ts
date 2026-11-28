@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { botDecide } from '../src/shared/bot';
 import { viewFor } from '../src/shared/engine';
+import { scenesOf } from '../src/shared/content';
 import type { ClientMessage, ServerMessage } from '../src/shared/types';
 import { Room, cleanTokens, type Conn } from '../src/server/rooms';
 
@@ -53,6 +54,30 @@ describe('rooms: pausing and players who are away', () => {
     send(room, a.conn, { t: 'start' });
     send(room, a.conn, { t: 'settings', autopilot: false });
     expect(room.settings.autopilot).toBe(true);
+  });
+
+  it('the host picks the theme in the lobby, and the game is dealt in it', () => {
+    const room = new Room('TEST', () => undefined);
+    const a = tab('tok-a');
+    const b = tab('tok-b');
+    seatOf(room, a.conn);
+    seatOf(room, b.conn);
+    expect(room.view().settings.theme).toBe('classic');
+    send(room, b.conn, { t: 'settings', theme: 'avatar' });
+    expect(room.settings.theme).toBe('classic');
+    send(room, a.conn, { t: 'settings', theme: 'pastel' as never });
+    expect(room.settings.theme).toBe('classic');
+    expect(a.sent.some((m) => m.t === 'error')).toBe(true);
+    send(room, a.conn, { t: 'settings', theme: 'avatar' });
+    // Changing one setting leaves the other as it was.
+    expect(room.view().settings).toEqual({ autopilot: false, theme: 'avatar' });
+    send(room, a.conn, { t: 'settings', autopilot: true });
+    expect(room.view().settings).toEqual({ autopilot: true, theme: 'avatar' });
+    send(room, a.conn, { t: 'start' });
+    expect(room.game!.theme).toBe('avatar');
+    expect(room.game!.supply.every((p) => scenesOf(p.genre, 'avatar').includes(p.scene))).toBe(true);
+    send(room, a.conn, { t: 'settings', theme: 'classic' });
+    expect(room.settings.theme).toBe('avatar');
   });
 
   it('pausing stops the bots until the player resumes', () => {

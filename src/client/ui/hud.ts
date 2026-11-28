@@ -1,6 +1,7 @@
-import { DECOR_INFO, GENRE_INFO, RULES } from '../../shared/content';
+import { DECOR_INFO, RULES } from '../../shared/content';
 import { ranking } from '../../shared/scoring';
 import { DECOR_SHAPES, type GameView, type Genre, type PlayerView } from '../../shared/types';
+import { typeInfo } from '../theme';
 import type { ChatPanel } from './chat';
 import { el, esc, ordinal, renderIf } from './dom';
 import { icon } from './icons';
@@ -239,7 +240,7 @@ export class Hud {
     renderIf(this.museum, sig, () => {
       const rows = rank.order
         .map((g) => {
-          const info = GENRE_INFO[g];
+          const info = typeInfo(g);
           const m = rank.multipliers[g];
           const width = Math.min(100, (v.prestige[g] / Math.max(10, ...Object.values(v.prestige))) * 100);
           const n = v.museum[g].length;

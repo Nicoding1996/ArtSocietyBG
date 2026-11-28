@@ -1,11 +1,12 @@
 import * as THREE from 'three';
-import { GENRE_INFO, RULES } from '../../shared/content';
+import { RULES } from '../../shared/content';
 import { GENRES, type Genre, type Painting } from '../../shared/types';
 import { ease, type Tweens } from './fx';
 import { CELL_H, CELL_W, TABLE_R, TABLE_TOP, outward, type Side } from './layout';
 import { baize, brass, darkGold, gold, mahogany } from './materials';
 import { MUSEUM, brassPlateTexture, discTexture, labelTexture, museumTexture, toTexture, trackPos } from './textures';
 import { backMesh, paintingMesh } from './tiles';
+import { typeIcon, typeInfo } from '../theme';
 import { loadedIcon } from '../ui/icons';
 
 export const PILE_SCALE = 0.3;
@@ -27,7 +28,7 @@ function markerTop(genre: Genre): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const ctx = c.getContext('2d')!;
-  ctx.fillStyle = GENRE_INFO[genre].color;
+  ctx.fillStyle = typeInfo(genre).color;
   ctx.beginPath();
   ctx.arc(64, 64, 64, 0, Math.PI * 2);
   ctx.fill();
@@ -186,7 +187,7 @@ export class Table {
     g.add(this.board);
 
     GENRES.forEach((genre, i) => {
-      const color = GENRE_INFO[genre].color;
+      const color = typeInfo(genre).color;
       const m = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.055, 32), [
         new THREE.MeshPhysicalMaterial({ color, roughness: 0.3, clearcoat: 1 }),
         new THREE.MeshStandardMaterial({ map: markerTop(genre), roughness: 0.35 }),
@@ -200,7 +201,7 @@ export class Table {
       const [px, pz] = PILE_AT[genre];
       pile.position.set(px, TABLE_TOP + 0.002, pz);
       const label = this.makePlate();
-      this.setPlate(label, `${GENRE_INFO[genre].short} \u00b7 0`, genre);
+      this.setPlate(label, `${typeInfo(genre).short} \u00b7 0`, genre);
       label.position.set(0, 0.42, 0);
       pile.add(label);
       g.add(pile);
@@ -242,13 +243,13 @@ export class Table {
 
   /** Engraves the plate again when its text changes, or once the font or the type's icon it needs has loaded. */
   private setPlate(s: THREE.Sprite, text: string, genre?: Genre) {
-    const ready = `${document.fonts.check('700 66px "Cormorant Garamond"')}|${!genre || !!loadedIcon(genre, '#16120e', 128, 2.2)}`;
-    const key = `${text}|${ready}`;
+    const ready = `${document.fonts.check('700 66px "Cormorant Garamond"')}|${!genre || !!loadedIcon(typeIcon(genre), '#16120e', 128, 2.2)}`;
+    const key = `${text}|${genre ? typeIcon(genre) : ''}|${ready}`;
     if (s.userData.plate === key) return;
     s.userData.plate = key;
     const mat = s.material as THREE.SpriteMaterial;
     mat.map?.dispose();
-    mat.map = toTexture(brassPlateTexture(text, genre ? { color: GENRE_INFO[genre].color, icon: genre } : undefined));
+    mat.map = toTexture(brassPlateTexture(text, genre ? { color: typeInfo(genre).color, icon: typeIcon(genre) } : undefined));
     mat.needsUpdate = true;
   }
 
@@ -359,7 +360,7 @@ export class Table {
         });
         pile.ids = ids;
       }
-      this.setPlate(pile.label, `${GENRE_INFO[g].short} \u00b7 ${list.length}`, g);
+      this.setPlate(pile.label, `${typeInfo(g).short} \u00b7 ${list.length}`, g);
       pile.label.visible = true;
     }
   }

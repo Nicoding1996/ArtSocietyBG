@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GENRE_INFO, RULES } from '../../shared/content';
 import type { Genre } from '../../shared/types';
+import { typeIcon } from '../theme';
 import { fbm, makeNoise } from '../util/noise';
 import { loadedIcon } from '../ui/icons';
 import { CELL_H, CELL_W, MARGIN_X, MARGIN_Y, PANEL_H, PANEL_W } from './layout';
@@ -578,7 +579,8 @@ const badgeCache = new Map<string, THREE.CanvasTexture>();
 
 /** The type label at the bottom of every frame: an icon on the type's colour. */
 export function genreBadgeTexture(genre: Genre): THREE.CanvasTexture {
-  const hit = badgeCache.get(genre);
+  const name = typeIcon(genre);
+  const hit = badgeCache.get(name);
   if (hit) return hit;
   const [c, ctx] = canvas(160, 100);
   ctx.fillStyle = '#16120e';
@@ -589,9 +591,9 @@ export function genreBadgeTexture(genre: Genre): THREE.CanvasTexture {
   ctx.beginPath();
   ctx.roundRect(7, 7, 146, 86, 10);
   ctx.fill();
-  drawIcon(ctx, genre, '#16120e', 80, 50, 76, 2.2);
+  drawIcon(ctx, name, '#16120e', 80, 50, 76, 2.2);
   const t = toTexture(c);
-  badgeCache.set(genre, t);
+  badgeCache.set(name, t);
   return t;
 }
 

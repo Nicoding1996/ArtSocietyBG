@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { advancePrestige, applyAction, createGame, viewFor, waitingOn } from '../src/shared/engine';
 import { botDecide, fallbackActions } from '../src/shared/bot';
-import { DECOR_INFO, PAINTING_SIZES, RULES, buildPaintings, makeDecor, sizeKey } from '../src/shared/content';
+import { DECOR_INFO, PAINTING_SIZES, RULES, aTypeNoun, buildPaintings, makeDecor, scenesOf, sizeKey } from '../src/shared/content';
 import { computeResults, ranking, scoreWall } from '../src/shared/scoring';
 import { taskOptions } from '../src/shared/options';
 import { makeRng } from '../src/shared/rng';
@@ -851,6 +851,36 @@ describe('final scoring', () => {
       'cards',
     );
     expect(b.winners.sort()).toEqual(['a', 'b']);
+  });
+});
+
+describe('themes', () => {
+  const players = Array.from({ length: 3 }, (_, i) => ({ id: `p${i}`, name: `P${i}`, color: '#fff', hat: 'beret' as const, isBot: false }));
+
+  it('an Avatar game deals the same paintings, with the nations as subjects and none twice', () => {
+    const classic = createGame({ seed: 42, players }).state;
+    const avatar = createGame({ seed: 42, players, theme: 'avatar' }).state;
+    expect(classic.theme).toBe('classic');
+    expect(avatar.theme).toBe('avatar');
+    expect(viewFor(avatar, 'p0').theme).toBe('avatar');
+    const shapes = (g: GameState) => g.supply.map((p) => `${p.id} ${p.genre} ${p.frame} ${p.w}x${p.h} ${p.seed}`).sort();
+    expect(shapes(avatar)).toEqual(shapes(classic));
+    for (const genre of GENRES) {
+      const own = new Set(scenesOf(genre, 'avatar'));
+      const dealt = [...avatar.supply, ...avatar.players.map((p) => p.starter!)].filter((p) => p.genre === genre).map((p) => p.scene);
+      expect(dealt.every((s) => own.has(s))).toBe(true);
+      expect(new Set(dealt).size).toBe(dealt.length);
+    }
+  });
+
+  it('log lines name the types by nation', () => {
+    const g = createGame({ seed: 7, players, theme: 'avatar' }).state;
+    hangStarters(g);
+    const kinds = [...g.log.map((l) => l.text).join('\n').matchAll(/\u201d \(([^,]+), \d\u00d7\d\)/g)].map((m) => m[1]);
+    expect(kinds).toHaveLength(3);
+    for (const k of kinds) expect(['Water', 'Earth', 'Fire', 'Air']).toContain(k);
+    expect(aTypeNoun('avatar', 'still')).toBe('an Air painting');
+    expect(aTypeNoun('classic', 'still')).toBe('a still life');
   });
 });
 

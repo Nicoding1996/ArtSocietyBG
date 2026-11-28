@@ -1,6 +1,7 @@
-import { GENRE_INFO, RULES } from '../../shared/content';
+import { RULES } from '../../shared/content';
 import type { GameResults, GameView, PlayerResult, PlayerView } from '../../shared/types';
 import type { Audio } from '../audio';
+import { typeInfo } from '../theme';
 import type { World } from '../three/world';
 import { el, esc } from './dom';
 import { endText } from './hud';
@@ -164,7 +165,7 @@ export class Ceremony {
 
     // Paintings, type by type from the most prestigious.
     for (const g of res.ranking) {
-      const info = GENRE_INFO[g];
+      const info = typeInfo(g);
       const m = res.multipliers[g];
       this.setAct(`${info.name} \u00b7 \u00d7${m}`, `Every ${esc(info.name)} painting scores ${m}, unless it is in a faux pas`);
       for (const p of v.players) {
@@ -195,7 +196,7 @@ export class Ceremony {
 
     // The eyeline.
     if (res.top) {
-      const top = GENRE_INFO[res.top];
+      const top = typeInfo(res.top);
       this.setAct('The eyeline', `+${RULES.eyelinePoints} for every ${esc(top.name)} painting in the eyeline band`);
       for (const p of v.players) {
         const r = result(p.id);

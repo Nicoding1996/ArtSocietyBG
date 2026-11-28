@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { GENRE_INFO } from '../shared/content';
 import { waitingOnView } from '../shared/options';
 import type { GameEvent, GameView, Hung, Painting, PlayerView, RoomView, Tile } from '../shared/types';
 import type { Audio } from './audio';
 import type { Net, NetStatus } from './net';
+import { typeInfo } from './theme';
 import { CELL_H } from './three/layout';
 import { PILE_SCALE } from './three/table';
 import { ASSIST_SCALE, EXCESS_SCALE, STAGE_SCALE } from './three/wall';
@@ -583,7 +583,7 @@ export class GameScreen {
         if (e.pid === me) w.stopPlacement();
         const at = await wall.hangAnimated(hung, from, w.tw, scale);
         this.audio.hang();
-        w.burst(at, e.tile.kind === 'painting' ? GENRE_INFO[e.tile.genre].color : '#ffe7a8', 26, 0.7, 0.12, 0.9);
+        w.burst(at, e.tile.kind === 'painting' ? typeInfo(e.tile.genre).color : '#ffe7a8', 26, 0.7, 0.12, 0.9);
         if (e.matches.length) {
           wall.flash([...e.matches, e.tile.id], '#ffd76a');
           this.audio.sparkle();
@@ -702,9 +702,9 @@ export class GameScreen {
         await w.fly(e.tile, from, to, { fromScale: 0.42, toScale: PILE_SCALE, fromQ: w.tableQuat, toQ: w.flatQuat, ms: 900 });
         w.table.setMuseum(next.museum);
         this.audio.chime();
-        w.floatAt(w.table.markerWorld(e.tile.genre).setY(1.5), `${esc(GENRE_INFO[e.tile.genre].name)} +${e.tile.value}`, 'gain');
+        w.floatAt(w.table.markerWorld(e.tile.genre).setY(1.5), `${esc(typeInfo(e.tile.genre).name)} +${e.tile.value}`, 'gain');
         await w.table.movePrestige(w.tw, e.tile.genre, e.from, e.to, e.landed, () => this.audio.tick());
-        if (e.to !== e.landed) toast(`${GENRE_INFO[e.tile.genre].name} would land on another marker, so it steps back to ${e.to}.`, 'info', 3600);
+        if (e.to !== e.landed) toast(`${typeInfo(e.tile.genre).name} would land on another marker, so it steps back to ${e.to}.`, 'info', 3600);
         await this.wait(300);
         break;
       }

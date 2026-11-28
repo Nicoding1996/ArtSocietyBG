@@ -1,4 +1,4 @@
-import { DECOR_INFO, GENRE_INFO, RULES, buildPaintings, decorList, emptyDecorSupply, makeDecor, parseSize, sizeKey } from './content';
+import { DECOR_INFO, RULES, aTypeNoun, buildPaintings, decorList, emptyDecorSupply, genreInfo, makeDecor, parseSize, sizeKey, typeNoun } from './content';
 import { nextRandom, shuffle } from './rng';
 import { computeResults } from './scoring';
 import {
@@ -18,6 +18,7 @@ import {
   type Painting,
   type PlayerState,
   type PlayerView,
+  type ThemeId,
   type TieBreak,
   type Tile,
 } from './types';
@@ -40,18 +41,20 @@ function log(g: GameState, kind: LogKind, text: string, pid?: string) {
   if (g.log.length > LOG_KEEP) g.log.splice(0, g.log.length - LOG_KEEP);
 }
 
-export const describe = (p: Painting) => `\u201c${p.title}\u201d (${GENRE_INFO[p.genre].name}, ${p.w}\u00d7${p.h})`;
+/** A painting in a log line: its title, then its type in the game's theme and its size. */
+export const describe = (g: GameState, p: Painting) => `\u201c${p.title}\u201d (${genreInfo(g.theme)[p.genre].name}, ${p.w}\u00d7${p.h})`;
 
 function emptyMuseum(): Record<Genre, Painting[]> {
   return { city: [], portrait: [], still: [], landscape: [] };
 }
 
-export function createGame(opts: { seed: number; players: NewPlayer[] }): { state: GameState; events: GameEvent[] } {
+export function createGame(opts: { seed: number; players: NewPlayer[]; theme?: ThemeId }): { state: GameState; events: GameEvent[] } {
   const n = opts.players.length;
   if (n < RULES.minPlayers || n > RULES.maxPlayers) throw new Error(`Art Society needs ${RULES.minPlayers}-${RULES.maxPlayers} players`);
   const g: GameState = {
     seed: opts.seed >>> 0,
     rng: opts.seed >>> 0,
+    theme: opts.theme ?? 'classic',
     round: 0,
     auctioneer: 0,
     players: [],
@@ -68,7 +71,7 @@ export function createGame(opts: { seed: number; players: NewPlayer[] }): { stat
     results: null,
   };
   const r = () => nextRandom(g);
-  const { supply, starters } = buildPaintings(r);
+  const { supply, starters } = buildPaintings(r, g.theme);
   g.supply = supply;
   const startCards = shuffle<number>(r, [...RULES.startCards]).slice(0, n);
   g.players = opts.players.map((p, i) => ({
@@ -139,7 +142,7 @@ function act(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): string |
       p.wall.push({ tile: s, x: a.x, y: a.y });
       p.starter = null;
       ev.push({ t: 'starter', pid: p.id, tile: s, x: a.x, y: a.y });
-      log(g, 'hang', `${p.name} hangs ${describe(s)} as a starting painting.`, p.id);
+      log(g, 'hang', `${p.name} hangs ${describe(g, s)} as a starting painting.`, p.id);
       if (g.players.every((x) => !x.starter)) startRound(g, ev);
       return null;
     }
@@ -168,7 +171,7 @@ function act(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): string |
       g.phase = { kind: 'bid' };
       for (const x of g.players) x.bid = null;
       ev.push({ t: 'lots', pid: p.id, lots: [...lots] });
-      log(g, 'auction', `${p.name} puts up ${lots.length} paintings: ${lots.map((l) => `${GENRE_INFO[l.genre].short} ${l.w}\u00d7${l.h}`).join(', ')}.`, p.id);
+      log(g, 'auction', `${p.name} puts up ${lots.length} paintings: ${lots.map((l) => `${genreInfo(g.theme)[l.genre].short} ${l.w}\u00d7${l.h}`).join(', ')}.`, p.id);
       return null;
     }
     case 'bid': {
@@ -190,7 +193,7 @@ function act(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): string |
       p.task = { queue: [{ tile, from: 'auction' }], rewards: [], placed: [], locked: [] };
       ph.next++;
       ev.push({ t: 'take', pid: p.id, tile, pick: ph.next });
-      log(g, 'take', `${p.name} takes ${describe(tile)}.`, p.id);
+      log(g, 'take', `${p.name} takes ${describe(g, tile)}.`, p.id);
       advance(g, p, ev);
       roundEnd(g, ev);
       return null;
@@ -256,8 +259,8 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       else t.queue.shift();
       ev.push({ t: 'hang', pid: p.id, tile, x: a.x, y: a.y, from, matches, faux });
       if (tile.kind === 'painting') {
-        log(g, 'hang', `${p.name} hangs ${describe(tile)}.`, p.id);
-        if (faux.length) log(g, 'warn', `Faux pas! ${p.name}'s ${GENRE_INFO[tile.genre].name.toLowerCase()} touches another of its type: they will not score.`, p.id);
+        log(g, 'hang', `${p.name} hangs ${describe(g, tile)}.`, p.id);
+        if (faux.length) log(g, 'warn', `Faux pas! ${p.name}'s ${typeNoun(g.theme, tile.genre)} touches another of its type: they will not score.`, p.id);
         if (matches.length) {
           t.rewards.push({ points: matches.length, from: 'frames' });
           log(g, 'decor', `${p.name} matched ${matches.length} frame${matches.length === 1 ? '' : 's'} and earns decor worth up to ${matches.length}.`, p.id);
@@ -274,7 +277,7 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       p.assistant = head.tile;
       t.queue.shift();
       ev.push({ t: 'assist', pid: p.id, tile: head.tile, from: head.from });
-      log(g, 'hang', `${p.name} gives ${head.tile.kind === 'painting' ? describe(head.tile) : `a ${DECOR_INFO[head.tile.shape].name.toLowerCase()}`} to their assistant.`, p.id);
+      log(g, 'hang', `${p.name} gives ${head.tile.kind === 'painting' ? describe(g, head.tile) : `a ${DECOR_INFO[head.tile.shape].name.toLowerCase()}`} to their assistant.`, p.id);
       return null;
     }
     case 'exchange': {
@@ -284,13 +287,13 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       if (fits(grid, mine.w, mine.h)) return 'That painting fits on your wall, so it must be hung (or given to your assistant).';
       const pile = g.museum[mine.genre];
       const i = pile.findIndex((m) => m.id === a.museum);
-      if (i < 0) return `Choose a ${GENRE_INFO[mine.genre].name.toLowerCase()} from the museum.`;
+      if (i < 0) return `Choose ${aTypeNoun(g.theme, mine.genre)} from the museum.`;
       const got = pile[i];
       if (!fits(grid, got.w, got.h)) return 'That museum painting does not fit on your wall either.';
       pile.splice(i, 1, mine);
       t.queue[0] = { tile: got, from: 'museum' };
       ev.push({ t: 'exchange', pid: p.id, gave: mine, got });
-      log(g, 'museum', `${p.name} exchanges ${describe(mine)} for ${describe(got)} from the museum.`, p.id);
+      log(g, 'museum', `${p.name} exchanges ${describe(g, mine)} for ${describe(g, got)} from the museum.`, p.id);
       return null;
     }
     case 'excess': {
@@ -302,7 +305,7 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       p.excess.push(mine);
       t.queue.shift();
       ev.push({ t: 'excess', pid: p.id, tile: mine });
-      log(g, 'warn', `${describe(mine)} does not fit. ${p.name} stores it as an excess painting (\u2212${RULES.excessPenalty}).`, p.id);
+      log(g, 'warn', `${describe(g, mine)} does not fit. ${p.name} stores it as an excess painting (\u2212${RULES.excessPenalty}).`, p.id);
       if (g.decor['1x1'] > 0) {
         g.decor['1x1']--;
         t.queue.unshift({ tile: makeDecor('1x1', `d${++g.decorSeq}`), from: 'excess' });
@@ -395,8 +398,8 @@ function taskAction(g: GameState, p: PlayerState, a: Action, ev: GameEvent[]): s
       const faux = h.tile.kind === 'painting' ? sameGenre(rest, gridOf(rest), h.tile, a.x, a.y) : [];
       p.wall[i] = { tile: h.tile, x: a.x, y: a.y };
       ev.push({ t: 'move', pid: p.id, tile: h.tile, fromX: h.x, fromY: h.y, x: a.x, y: a.y, faux });
-      log(g, 'hang', `${p.name} moves ${h.tile.kind === 'painting' ? describe(h.tile) : `the ${DECOR_INFO[h.tile.shape].name.toLowerCase()}`} on their wall.`, p.id);
-      if (h.tile.kind === 'painting' && faux.length) log(g, 'warn', `Faux pas! ${p.name}'s ${GENRE_INFO[h.tile.genre].name.toLowerCase()} touches another of its type: they will not score.`, p.id);
+      log(g, 'hang', `${p.name} moves ${h.tile.kind === 'painting' ? describe(g, h.tile) : `the ${DECOR_INFO[h.tile.shape].name.toLowerCase()}`} on their wall.`, p.id);
+      if (h.tile.kind === 'painting' && faux.length) log(g, 'warn', `Faux pas! ${p.name}'s ${typeNoun(g.theme, h.tile.genre)} touches another of its type: they will not score.`, p.id);
       return null;
     }
     case 'done': {
@@ -624,7 +627,7 @@ function roundEnd(g: GameState, ev: GameEvent[]) {
     const move = advancePrestige(g.prestige, tile.genre, tile.value);
     ev.push({ t: 'museum', tile, ...move });
     const bumped = move.to !== move.landed ? ' (that space was taken, so it steps back)' : '';
-    log(g, 'museum', `${describe(tile)} goes unsold to the museum. ${GENRE_INFO[tile.genre].name} prestige ${move.from} \u2192 ${move.to}${bumped}.`);
+    log(g, 'museum', `${describe(g, tile)} goes unsold to the museum. ${genreInfo(g.theme)[tile.genre].name} prestige ${move.from} \u2192 ${move.to}${bumped}.`);
   }
   if (!g.end && g.supply.length < g.players.length + 1) trigger(g, ev, 'supply', null);
   if (g.end) return gameOver(g, ev);

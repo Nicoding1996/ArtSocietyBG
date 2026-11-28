@@ -8,6 +8,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RULES } from '../../shared/content';
 import { GENRES, type HatId, type Tile } from '../../shared/types';
+import { TYPE_ICONS } from '../theme';
 import { preloadIcons } from '../ui/icons';
 import { Confetti, Particles, Tweens, ease } from './fx';
 import { GRID_BOTTOM, GRID_TOP, MARGIN_Y, PANEL_W, ROOM, ROOM_H, TABLE_R, TABLE_TOP, outward, sidesFor, type Side } from './layout';
@@ -278,6 +279,8 @@ export class World {
     await preloadIcons([
       ...GENRES.map((g) => [g, '#16120e', 128, 2.2] as [string, string, number, number]),
       ...GENRES.map((g) => [g, '#ffffff', 128, 2.2] as [string, string, number, number]),
+      // The Avatar theme's elements, for the museum plates.
+      ...TYPE_ICONS.filter((n) => !(GENRES as readonly string[]).includes(n)).map((n) => [n, '#16120e', 128, 2.2] as [string, string, number, number]),
       ['laurel', '#fff2cf', 128, 2],
     ]);
   }

@@ -1,8 +1,9 @@
-import { FRAME_INFO, GENRE_INFO, RULES } from '../../shared/content';
+import { FRAME_INFO, RULES } from '../../shared/content';
 import { ranking, scoreWall } from '../../shared/scoring';
 import { GENRES, type GameView, type Genre, type PlayerView } from '../../shared/types';
 import { emptyCells, fauxPasIds, fits, gridOf } from '../../shared/wall';
 import { artImg } from '../art/generate';
+import { typeIcon, typeInfo } from '../theme';
 import { el, esc } from './dom';
 import { icon } from './icons';
 import { closeModal, modal } from './overlays';
@@ -53,13 +54,13 @@ export function miniWall(p: Pick<PlayerView, 'wall'>, art = false): HTMLElement 
     const d = el('div', `mw-t ${t.kind}`);
     place(d, h.x, h.y, t.w, t.h);
     if (t.kind === 'painting') {
-      d.style.setProperty('--gc', GENRE_INFO[t.genre].color);
+      d.style.setProperty('--gc', typeInfo(t.genre).color);
       d.style.setProperty('--fc', FRAME_INFO[t.frame].color);
       if (faux.has(t.id)) d.classList.add('faux');
       if (art) {
-        d.title = `${GENRE_INFO[t.genre].name} \u00b7 ${FRAME_INFO[t.frame].name} frame${faux.has(t.id) ? ' \u00b7 faux pas' : ''}`;
+        d.title = `${typeInfo(t.genre).name} \u00b7 ${FRAME_INFO[t.frame].name} frame${faux.has(t.id) ? ' \u00b7 faux pas' : ''}`;
         // The type's colour on a tab at the foot, like the label on the frames in the salon.
-        d.append(artImg(t, 'mw-img'), el('span', 'mw-g', icon(t.genre)));
+        d.append(artImg(t, 'mw-img'), el('span', 'mw-g', icon(typeIcon(t.genre))));
       }
     } else if (art) d.innerHTML = shieldsHtml(t.points);
     box.appendChild(d);
@@ -71,7 +72,7 @@ export function miniWall(p: Pick<PlayerView, 'wall'>, art = false): HTMLElement 
 function wallFacts(p: PlayerView): HTMLElement {
   const types = GENRES.map((g) => {
     const n = p.wall.filter((h) => h.tile.kind === 'painting' && h.tile.genre === g).length;
-    return `<span class="wf-g" style="--gc:${GENRE_INFO[g].color}" title="${esc(GENRE_INFO[g].name)}: ${n} on the wall">${icon(g)}<b>${n}</b></span>`;
+    return `<span class="wf-g" style="--gc:${typeInfo(g).color}" title="${esc(typeInfo(g).name)}: ${n} on the wall">${icon(typeIcon(g))}<b>${n}</b></span>`;
   }).join('');
   const foot = el(
     'div',
@@ -235,7 +236,7 @@ function renderMuseum(wrap: HTMLElement, v: GameView, me: string | null, focus?:
         grid && list.length ? ` \u00b7 ${fitting} fit${fitting === 1 ? 's' : ''} your wall` : ''
       }</span></div>`,
     );
-    sec.style.setProperty('--gc', GENRE_INFO[g].color);
+    sec.style.setProperty('--gc', typeInfo(g).color);
     const row = el('div', 'mv-list');
     if (!list.length) row.appendChild(el('div', 'mv-empty', 'None yet.'));
     for (const m of list) {
