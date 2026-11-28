@@ -194,14 +194,14 @@ const AVATAR_SCENES: SceneTable = {
     // The southern village
     southpole: [['The Southern Water Tribe', 'Village at the South Pole', 'Home on the Ice', 'The Snow Wall', 'The Southern Village'], ['', 'in Winter', 'after the Snowfall', 'at the Edge of the World', 'on a Still Day']],
     watchtower: [['Sokka\u2019s Watchtower', 'The Lookout', 'The Snow Tower', 'On Watch at the Wall', 'The Southern Lookout'], ['', '', 'at Dawn', 'in the Wind', 'before the Penguins']],
-    blacksnow: [['Black Snow', 'Ash on the Wind', 'The Black Snow Falls', 'Before the Raid', 'Soot over the South'], ['', '', 'on the Village', 'in Winter', 'at Dusk']],
+    blacksnow: [['Black Snow', 'Ash on the Wind', 'The Black Snow Falls', 'Before the Raid', 'Soot over the South'], ['', '', 'across the Village', 'in Winter', 'at Dusk']],
     // Korra's South Pole
     portal: [['The Southern Spirit Portal', 'The Gate between Worlds', 'Light of the Southern Portal', 'Where the Spirits Cross', 'The Portal in the Ice'], ['', '', 'at Solstice', 'by Night', 'under the Lights']],
-    festival: [['The Glacier Spirits Festival', 'Lanterns of the South', 'Festival Night', 'The Southern Capital', 'Fair on the Ice'], ['', '', 'at Night', 'in Midwinter', 'under the Lanterns']],
+    festival: [['The Glacier Spirits Festival', 'Lanterns of the South', 'The Festival of Lights', 'The Southern Capital', 'Fair on the Ice'], ['', '', 'at Night', 'in Midwinter', 'under the Stars']],
     // The southern sea
-    warfleet: [['Hakoda\u2019s Fleet', 'The Water Tribe Warships', 'Sails of the South', 'The Southern Fleet', 'Warriors at Sea'], ['', '', 'Setting Out', 'at Dawn', 'on the Open Sea']],
+    warfleet: [['Hakoda\u2019s Fleet', 'The Water Tribe Warships', 'Sails of the South', 'The Southern Fleet', 'Warriors of the South'], ['', '', 'Setting Out', 'at Dawn', 'on the Open Sea']],
     icedodging: [['Ice Dodging', 'Through the Icebergs', 'The Rite of Ice Dodging', 'A Narrow Passage', 'Sailing the Ice Field'], ['', '', 'at Dawn', 'in a Heavy Sea', 'in the Fog']],
-    iceberg: [['The Boy in the Iceberg', 'The Glowing Iceberg', 'Light in the Ice', 'What the Sea Kept', 'A Hundred Years in the Ice'], ['', '', 'at Dusk', 'in the Southern Sea', 'by Night']],
+    iceberg: [['The Boy in the Iceberg', 'The Glowing Iceberg', 'Light in the Ice', 'What the Sea Kept', 'A Hundred Years in the Ice'], ['', '', 'at Dusk', 'in the Southern Waters', 'by Night']],
     // Keepsakes
     keepsakes: [['Boomerang and Necklace', 'Keepsakes of the South', 'Treasures of the Water Tribe', 'Still Life with Boomerang', 'Things from Home'], ['', '', 'on a Fur Pelt', 'by Lamplight', 'in Blue and White']],
     scroll: [['The Waterbending Scroll', 'The Scroll of Forms', 'Lessons on a Scroll', 'The Stolen Scroll', 'Waterbending Forms'], ['', '', 'Unrolled', 'by Lamplight', 'in Blue and Black']],
@@ -211,7 +211,7 @@ const AVATAR_SCENES: SceneTable = {
     penguins: [['Penguin Sledding', 'Otter Penguins', 'Down the Slope', 'The Penguin Run', 'Sledding Season'], ['', '', 'at Noon', 'in Fresh Snow', 'on the Big Hill']],
     seals: [['Seals on the Ice', 'The Floe', 'Basking Seals', 'Seals and Ice', 'The Seal Colony'], ['', '', 'at Noon', 'in the Thaw', 'by the Open Sea']],
     // On their own
-    redmoon: [['The Night the Moon Turned Red', 'The Red Moon', 'When the Moon Went Red', 'The Moon Spirit Falls', 'A Red Moon'], ['', '', 'over the North', 'above the Ice Wall', 'on the Night of the Siege']],
+    redmoon: [['The Night the Moon Turned Red', 'The Red Moon', 'When the Moon Went Red', 'The Moon Spirit Falls', 'A Red Moon'], ['', '', 'over the North', 'above the Ice Wall', 'during the Siege']],
     swamp: [['The Great Tree of the Swamp', 'The Foggy Swamp', 'The Banyan-Grove Tree', 'Heart of the Swamp', 'Roots in the Mist'], ['', '', 'in the Fog', 'at Dusk', 'after the Rain']],
     icefishing: [['Ice Fishing', 'The Fishing Hole', 'Spear and Catch', 'A Day\u2019s Catch', 'Fishing through the Ice'], ['', '', 'at Noon', 'in the Cold', 'off the Village']],
     hut: [['Inside a Southern Hut', 'By the Cooking Fire', 'Stew on the Fire', 'Home in the South', 'Warm Hides'], ['', '', 'in Winter', 'at Night', 'after the Hunt']],
@@ -223,13 +223,54 @@ const AVATAR_SCENES: SceneTable = {
     katara: [['Katara', 'The Waterbender', 'Katara of the Southern Tribe', 'Master Katara', 'Daughter of the South'], ['', '', 'with Her Mother\u2019s Necklace', 'at Fourteen', 'in Blue']],
     sokka: [['Sokka', 'The Warrior of the South', 'Sokka of the Southern Tribe', 'Meat and Sarcasm Guy', 'The Plan Guy'], ['', '', 'with Boomerang', 'on Watch', 'at Fifteen']],
   },
-  portrait: {},
+  portrait: {
+    // The capital
+    firecapital: [['The Fire Nation Capital', 'The City in the Crater', 'Caldera City', 'The Royal City', 'Roofs of the Capital'], ['', '', 'at Sunset', 'in Ash', 'from the Harbour']],
+    throneroom: [['The Throne Room', 'The Wall of Flame', 'Before the Fire Lord', 'Throne of Fire', 'The Fire Lord\u2019s Court'], ['', '', 'in Red and Gold', 'at Audience', 'Burning']],
+    turtleducks: [['The Turtle-Duck Pond', 'Turtle Ducks', 'Feeding the Turtle Ducks', 'The Palace Pond', 'Ducks under the Willow'], ['', '', 'in Spring', 'at Dusk', 'in the Royal Garden']],
+    // Ember Island
+    beachhouse: [['The Beach House', 'Ember Island', 'The Royal Retreat', 'House by the Sea', 'The House on Ember Island'], ['', '', 'at Sunset', 'out of Season', 'in Summer']],
+    emberplayers: [['The Ember Island Players', 'An Evening at the Theatre', 'The Island Playhouse', 'Curtain Up', 'The Boy in the Iceberg, Staged'], ['', '', 'on Opening Night', 'in Four Acts', 'by Lamplight']],
+    // The Sun Warriors
+    sunwarriors: [['The Sun Warriors\u2019 Ruins', 'The Ancient City', 'The Lost Sun Warriors', 'Temple of the Sun', 'Steps to the Sun'], ['', '', 'in the Jungle', 'at Noon', 'Overgrown']],
+    ranshaw: [['Ran and Shaw', 'The Masters', 'The Last Dragons', 'Dance of the Dragons', 'The Dragon Dance'], ['', '', 'in Flight', 'in Many Colours', 'over the Temple']],
+    eternalflame: [['The Eternal Flame', 'The First Fire', 'The Flame That Never Dies', 'Fire of the Sun Warriors', 'The Sacred Flame'], ['', '', 'in the Dark', 'on Its Altar', 'Burning']],
+    // Sozin's Comet
+    comet: [['Sozin\u2019s Comet', 'The Comet', 'Fire in the Sky', 'The Comet Returns', 'Comet over the Volcano'], ['', '', 'at Night', 'Rising', 'at Summer\u2019s End']],
+    airships: [['The Airship Fleet', 'Airships', 'The Fleet Aloft', 'War Balloons', 'Ships of the Air'], ['', '', 'under a Burning Sky', 'at Dawn', 'over the Earth Kingdom']],
+    // Avatar Roku
+    firetemple: [['The Fire Temple', 'The Temple on Crescent Island', 'Crescent Island', 'The Sages\u2019 Temple', 'Temple on the Volcano'], ['', '', 'at the Solstice', 'at Dusk', 'in Smoke']],
+    rokuisland: [['Avatar Roku\u2019s Island', 'The Island Erupts', 'The Last Day of Roku', 'Fire and Ash', 'The Volcano Wakes'], ['', '', 'at Night', 'at Dusk', 'in Red']],
+    // The Boiling Rock
+    boilingrock: [['The Boiling Rock', 'The Prison in the Lake', 'The Inescapable Prison', 'Steam over the Rock', 'The Boiling Lake'], ['', '', 'at Midday', 'at Dusk', 'from the Shore']],
+    gondola: [['The Gondola', 'Across the Boiling Lake', 'The Prison Gondola', 'The Line to the Rock', 'Escape by Gondola'], ['', '', 'in Steam', 'at Dawn', 'on Its Cable']],
+    // Treasures
+    bluespirit: [['The Blue Spirit', 'Mask and Swords', 'The Blue Mask', 'The Masked Swordsman', 'Dao Swords'], ['', '', 'at Rest', 'on Red Cloth', 'by Night']],
+    crown: [['The Fire Lord\u2019s Crown', 'The Flame Crown', 'Crown of the Fire Nation', 'The Royal Headpiece', 'The Crown Prince\u2019s Crown'], ['', '', 'in Gold', 'on Red Silk', 'by Firelight']],
+    warmap: [['The War Room', 'Map of the World', 'The Generals\u2019 Table', 'Plans of the War', 'The Campaign Map'], ['', '', 'by Lamplight', 'at Council', 'in Red Ink']],
+    // Creatures
+    komodo: [['Komodo Rhinos', 'The Rhino Riders\u2019 Mounts', 'Rough Rhinos', 'The March of the Rhinos', 'The Cavalry'], ['', '', 'on the Road', 'at Dawn', 'in Armour']],
+    hawk: [['The Messenger Hawk', 'The Palace Hawk', 'Hawk on Its Perch', 'The Courier', 'Hawky'], ['', '', 'with a Scroll', 'at Rest', 'at Dawn']],
+    fang: [['Fang', 'Avatar Roku\u2019s Dragon', 'The Red Dragon', 'The Avatar\u2019s Companion', 'Dragon in the Clouds'], ['', '', 'in Flight', 'over the Sea', 'at Sunset']],
+    // On their own
+    blacksun: [['The Day of Black Sun', 'The Eclipse', 'The Sun Goes Dark', 'The Black Sun', 'Eight Minutes of Dark'], ['', '', 'at Noon', 'over the Palace', 'in Silence']],
+    zukoship: [['Zuko\u2019s Ship', 'The Prince\u2019s Ship', 'The Hunt for the Avatar', 'The Banished Prince\u2019s Ship', 'The Steamship'], ['', '', 'in the Ice', 'at Sea', 'at Dawn']],
+    agnikai: [['Agni Kai', 'The Duel', 'The Courtyard of Fire', 'Fire Duel', 'Under the Palace Roofs'], ['', '', 'at Sunset', 'at Dawn', 'in Smoke']],
+    paintedlady: [['The Painted Lady', 'Spirit of the River', 'The Lady in the Mist', 'Guardian of Jang Hui', 'The Painted Lady\u2019s Village'], ['', '', 'by Moonlight', 'by Night', 'on the Water']],
+    wanted: [['Wanted', 'Wanted Posters', 'Reward Offered', 'Notices on the Wall', 'The Blue Spirit, Wanted'], ['', '', 'in the Rain', 'by the Gate', 'Torn']],
+    lanterns: [['Lanterns of the Capital', 'The Lantern Festival', 'Lights of the Fire Nation', 'A Thousand Lanterns', 'Red Lanterns'], ['', '', 'at Night', 'in the Wind', 'over the Harbour']],
+    volcanic: [['The Volcanic Islands', 'Islands of Fire', 'The Fire Nation Archipelago', 'The Smoking Isles', 'Smoke on the Horizon'], ['at Sunset', 'at Dusk', 'in the Last Light', 'Glowing', '']],
+    probending: [['The Pro-Bending Arena', 'Pro-Bending', 'The Arena on the Bay', 'The Championship', 'The Fire Ferrets\u2019 Arena'], ['', '', 'at Night', 'Lit Up', 'in the Final Round']],
+    // People
+    zuko: [['Prince Zuko', 'Zuko', 'The Banished Prince', 'Fire Lord Zuko', 'The Prince of the Fire Nation'], ['', '', 'with His Scar', 'in Red', 'at Sixteen']],
+    iroh: [['General Iroh', 'Uncle Iroh', 'The Dragon of the West', 'Iroh', 'The Tea Master'], ['', '', 'with His Teapot', 'Smiling', 'in Red and Gold']],
+  },
   still: {},
   landscape: {
     // Ba Sing Se
     outerwall: [['The Outer Wall', 'The Walls of Ba Sing Se', 'The Impenetrable City', 'The Great Wall of the Earth Kingdom', 'Wall across the Plain'], ['', '', 'in Mist', 'at Dawn', 'after Rain']],
     upperring: [['The Upper Ring', 'The Earth King\u2019s Palace', 'Palace of the Earth King', 'Roofs of the Upper Ring', 'The Royal Palace of Ba Sing Se'], ['', '', 'in Mist', 'at Dawn', 'in Spring']],
-    monorail: [['The Ring Train', 'Rails over Ba Sing Se', 'Between the Rings', 'The Stone Train', 'Train to the Upper Ring'], ['', '', 'in Mist', 'at Dusk', 'over the Rooftops']],
+    monorail: [['The Ring Train', 'Rails across Ba Sing Se', 'Between the Rings', 'The Stone Train', 'Train to the Upper Ring'], ['', '', 'in Mist', 'at Dusk', 'over the Rooftops']],
     // Omashu
     omashu: [['Omashu', 'The Mountain City', 'Omashu on Its Peak', 'The City of King Bumi', 'Towers of Omashu'], ['', '', 'in Mist', 'at Dawn', 'from the Bridge']],
     mailchutes: [['The Mail Chutes', 'Riding the Chutes', 'Delivery Service', 'The Chutes of Omashu', 'Down the Mountain'], ['', '', 'at Full Speed', 'at Noon', 'in Spring']],
@@ -252,14 +293,14 @@ const AVATAR_SCENES: SceneTable = {
     // Creatures
     badgermoles: [['Badgermoles', 'The First Earthbenders', 'In the Badgermoles\u2019 Cave', 'Badgermole Burrow', 'Listening to the Earth'], ['', '', 'Underground', 'in the Dark', 'at Rest']],
     bosco: [['Bosco', 'The Earth King\u2019s Bear', 'Bosco in the Palace Garden', 'The Royal Bear', 'A Bear in Green'], ['', '', 'at Rest', 'in Spring', 'at Court']],
-    ostrichhorses: [['Ostrich Horses', 'Riders on the Plain', 'The Ostrich Horse Herd', 'Ostrich Horses Grazing', 'The Long Road'], ['', '', 'at Dawn', 'in the Grass', 'on the Road']],
+    ostrichhorses: [['Ostrich Horses', 'Riders on the Plain', 'The Ostrich Horse Herd', 'Ostrich Horses Grazing', 'The Long Road'], ['', '', 'at Dawn', 'in the Grass', 'in the Wind']],
     // On their own
     cabbages: [['My Cabbages!', 'The Cabbage Cart', 'The Cabbage Merchant', 'Cabbages for Sale', 'Market Day'], ['', '', 'at Noon', 'on the Road', 'Once Again']],
-    drill: [['The Drill', 'The Siege of Ba Sing Se', 'The Machine at the Wall', 'The Fire Nation Drill', 'Iron against Stone'], ['', '', 'at the Outer Wall', 'in Dust', 'at Dawn']],
+    drill: [['The Drill', 'The Siege of Ba Sing Se', 'The Great Machine', 'The Fire Nation Drill', 'Iron against Stone'], ['', '', 'at the Outer Wall', 'in Dust', 'at Dawn']],
     laogai: [['Lake Laogai', 'The Quiet Lake', 'What Lies under Lake Laogai', 'The Lake Outside the City', 'Still Water'], ['', '', 'at Dawn', 'in Mist', 'in Autumn']],
     greatdivide: [['The Great Divide', 'The Canyon', 'The Deepest Canyon', 'Across the Great Divide', 'Walls of the Canyon'], ['', '', 'at Noon', 'at Dusk', 'in Mist']],
     serpentpass: [['The Serpent\u2019s Pass', 'The Narrow Path', 'Between Two Lakes', 'The Pass to Ba Sing Se', 'The Serpent\u2019s Road'], ['', '', 'in Mist', 'at Dawn', 'in a Storm']],
-    earthrumble: [['Earth Rumble', 'The Blind Bandit', 'The Rumble Arena', 'The Earthbending Ring', 'Fight Night'], ['', '', 'at Night', 'in the Ring', 'Six']],
+    earthrumble: [['Earth Rumble', 'The Blind Bandit\u2019s Ring', 'The Rumble Arena', 'The Earthbending Ring', 'Earth Rumble Six'], ['', '', 'at Night', 'by Lamplight', 'Sold Out']],
     makapu: [['Makapu Village', 'The Volcano above Makapu', 'Aunt Wu\u2019s Village', 'The Village under the Mountain', 'Clouds over Makapu'], ['', '', 'in Spring', 'at Dawn', 'in Mist']],
     beifong: [['The Beifong Estate', 'The House in Gaoling', 'Garden of the Beifongs', 'Home of the Blind Bandit', 'Walls of the Beifong Estate'], ['', '', 'in Spring', 'at Dusk', 'in the Rain']],
     // People
@@ -303,6 +344,24 @@ const AVATAR_FIT: Record<string, 'tall' | 'wide'> = {
   drill: 'wide',
   serpentpass: 'wide',
   laogai: 'wide',
+  // Fire
+  ranshaw: 'tall',
+  eternalflame: 'tall',
+  comet: 'tall',
+  firetemple: 'tall',
+  hawk: 'tall',
+  paintedlady: 'tall',
+  wanted: 'tall',
+  firecapital: 'wide',
+  throneroom: 'wide',
+  airships: 'wide',
+  boilingrock: 'wide',
+  gondola: 'wide',
+  warmap: 'wide',
+  komodo: 'wide',
+  zukoship: 'wide',
+  agnikai: 'wide',
+  volcanic: 'wide',
 };
 
 const shapeOf = (p: { w: number; h: number }): 'tall' | 'wide' | 'any' => {

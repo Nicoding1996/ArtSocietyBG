@@ -10,6 +10,7 @@ import { stillScene } from './still';
 import { ukiyoeScene } from './ukiyoe';
 import { waterScene } from './avatar/water';
 import { earthScene } from './avatar/earth';
+import { fireScene } from './avatar/fire';
 
 /** Gap between a tile's edge and its frame, and the frame's width, in wall units (cell height = 1). */
 export const TILE_MARGIN = 0.05;
@@ -49,6 +50,7 @@ const SCENES: Record<string, (p: Painter) => void> = {
 const AVATAR_PAINTERS: [Genre, (p: Painter, scene: string) => void][] = [
   ['city', waterScene],
   ['landscape', earthScene],
+  ['portrait', fireScene],
 ];
 for (const [genre, paint] of AVATAR_PAINTERS)
   for (const scene of scenesOf(genre, 'avatar')) {
