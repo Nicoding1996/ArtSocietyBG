@@ -221,7 +221,8 @@ export class Room implements Surroundings {
     const night = new THREE.MeshBasicMaterial({ map: toTexture(windowTexture()), toneMapped: true });
     for (const x of [-2.2, 2.2]) {
       const pane = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 4.6), night);
-      pane.position.set(x, 3.6, 0.02);
+      // Just in front of the frame's face (z 0.04), which hid it, and behind the glazing bars.
+      pane.position.set(x, 3.6, 0.045);
       g.add(pane);
       const frame = new THREE.Mesh(new THREE.BoxGeometry(1.9, 4.8, 0.08), walnut());
       frame.position.set(x, 3.6, 0);
