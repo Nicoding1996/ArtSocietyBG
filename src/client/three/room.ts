@@ -5,8 +5,16 @@ import { damaskTexture, panelTexture, parquetTexture, toTexture, windowTexture }
 
 const WAINSCOT_H = 1.0;
 
+/** The room around the table, in whichever theme. Each has exactly one point light, so switching rooms recompiles no shaders. */
+export interface Surroundings {
+  readonly group: THREE.Group;
+  /** Sides without a player get something to look at instead of a gallery wall. */
+  setPlayerSides(sides: Side[]): void;
+  update(dt: number): void;
+}
+
 /** The salon around the table: floor, walls, windows, chandelier and the general lighting. */
-export class Room {
+export class Room implements Surroundings {
   readonly group = new THREE.Group();
   private windows = new Map<Side, THREE.Group>();
   private flames: THREE.Mesh[] = [];

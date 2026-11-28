@@ -85,6 +85,12 @@ export class App {
     this.status.after(box);
   }
 
+  /** Names, icons and paintings follow the theme, and so does the room around the table. */
+  private useTheme(look: ThemeId) {
+    setTheme(look);
+    this.world.setLook(look);
+  }
+
   /** Shows the bots' half-finished salon behind the home and lobby screens. */
   private showDemo() {
     void this.world.ready.then(() => {
@@ -135,14 +141,14 @@ export class App {
         this.net.rememberSeat(m.room.code);
         history.replaceState(null, '', `?room=${m.room.code}`);
         // Settings only change in the lobby, so during a game this is the game's theme too.
-        setTheme(m.room.settings.theme);
+        this.useTheme(m.room.settings.theme);
         if (m.room.status === 'lobby') this.showLobby();
         else if (this.screen !== 'game') this.showGame();
         this.game?.roomChanged(m.room);
         break;
       }
       case 'game':
-        setTheme(m.view.theme);
+        this.useTheme(m.view.theme);
         if (this.screen !== 'game') {
           this.showGame();
           if (this.room) this.game!.roomChanged(this.room);
@@ -193,7 +199,7 @@ export class App {
     if (this.screen !== 'home') this.clearScreen();
     const wasGame = this.screen === 'game';
     this.screen = 'home';
-    setTheme('classic');
+    this.useTheme('classic');
     if (wasGame || this.demo?.theme !== theme()) this.showDemo();
     else this.world.setDemo(true);
     const code = (new URLSearchParams(location.search).get('room') ?? '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);

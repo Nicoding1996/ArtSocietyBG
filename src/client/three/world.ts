@@ -7,15 +7,16 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RULES } from '../../shared/content';
-import { GENRES, type HatId, type Tile } from '../../shared/types';
+import { GENRES, type HatId, type ThemeId, type Tile } from '../../shared/types';
 import { TYPE_ICONS } from '../theme';
 import { preloadIcons } from '../ui/icons';
 import { Confetti, Particles, Tweens, ease } from './fx';
 import { GRID_BOTTOM, GRID_TOP, MARGIN_Y, PANEL_W, ROOM, ROOM_H, TABLE_R, TABLE_TOP, outward, sidesFor, type Side } from './layout';
 import { gold, marble, silver } from './materials';
 import { Pawn } from './pieces';
-import { Room } from './room';
+import { Room, type Surroundings } from './room';
 import { Table } from './table';
+import { TeaHouse } from './teahouse';
 import { flickerFlames, tileMesh } from './tiles';
 import { GalleryWall, type GhostState } from './wall';
 
@@ -118,7 +119,11 @@ export class World {
   readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 120);
   readonly controls: OrbitControls;
   readonly tw = new Tweens();
-  readonly room = new Room();
+  /** The room around the table in the current theme; each one is built the first time it is needed. */
+  private room: Surroundings = new Room();
+  private rooms = new Map<ThemeId, Surroundings>([['classic', this.room]]);
+  private look: ThemeId = 'classic';
+  private roomSides: Side[] = [0];
   readonly table = new Table();
   readonly walls = new Map<string, GalleryWall>();
   readonly sides = new Map<string, Side>();
@@ -296,6 +301,21 @@ export class World {
     this.applyLens();
   }
 
+  /** Puts the table in the theme's room: the salon, or the tea house for the Avatar theme. */
+  setLook(look: ThemeId) {
+    if (look === this.look) return;
+    this.look = look;
+    let next = this.rooms.get(look);
+    if (!next) {
+      next = look === 'avatar' ? new TeaHouse() : new Room();
+      this.rooms.set(look, next);
+    }
+    this.scene.remove(this.room.group);
+    this.room = next;
+    this.room.setPlayerSides(this.roomSides);
+    this.scene.add(this.room.group);
+  }
+
   // ---------- seats ----------
 
   /** Gives every player a wall, a figurine and a bidding stack. The local player always sits at the front. */
@@ -342,7 +362,8 @@ export class World {
       }
       this.placePawn(s.id);
     });
-    this.room.setPlayerSides(sides.slice(0, Math.max(1, n)));
+    this.roomSides = sides.slice(0, Math.max(1, n));
+    this.room.setPlayerSides(this.roomSides);
     this.table.setSeats(seats.map((s) => ({ pid: s.id, side: this.sides.get(s.id)!, color: s.color })));
   }
 
