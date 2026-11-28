@@ -91,6 +91,7 @@ npm run typecheck
 
 - `npm run sim -- 50` plays 50 games per table size instead of the default 300.
 - `/?gallery` shows every painting scene in several sizes, which helps when tuning the art generators. `/?gallery=7` uses a different seed.
+- `/?gallery&theme=avatar` shows the Avatar theme's subjects instead (add `&scene=oasis` for one), and `/?gallery&theme=avatar&game=3` deals one game's paintings and shows them with their titles, so you can check that no subject repeats.
 - `ART_SOCIETY_FAST=1 npm run serve` makes bots act almost at once and shortens the idle timers, which speeds up testing.
 - The game's numbers (wall size, eyeline rows, bid cards, multipliers, bonuses and penalties, decor supply) live in `RULES` in `src/shared/content.ts`. Run `npm test` and `npm run sim` after changing them.
 

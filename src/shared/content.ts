@@ -177,23 +177,102 @@ const SCENES: SceneTable = {
 };
 
 /**
- * The Avatar theme's compositions, by nation (see AVATAR_GENRE_INFO). Water is painted so far; the other
- * nations follow. A title only names what every painting of its scene shows.
+ * The Avatar theme's subjects, by nation (see AVATAR_GENRE_INFO). Each nation has more subjects than a game
+ * has paintings of it, so no subject appears twice in a game. Water is painted so far; until a nation is,
+ * its paintings use the classic scenes. A title only names what every painting of its subject shows.
  */
 const AVATAR_SCENES: SceneTable = {
   city: {
-    icecity: [['The City of Ice', 'The Northern Water Tribe', 'Canals of the North', 'The Great Ice Wall', 'The Water Gate'], ['at Moonrise', 'under the Full Moon', 'in the Long Night', 'in Deep Winter', 'by Moonlight']],
+    // The Northern Water Tribe
+    icecity: [['The City of Ice', 'The Northern Water Tribe', 'Towers of Ice', 'The Great Ice Wall', 'The Northern City'], ['at Moonrise', 'under the Full Moon', 'in the Long Night', 'in Deep Winter', 'by Moonlight']],
+    watergate: [['The Water Gate', 'The Great Wall Opens', 'Gate of the North', 'Passage through the Ice', 'The Ice Wall Parts'], ['', '', 'at Dawn', 'for a Canoe', 'in Winter']],
+    canals: [['Canals of the Northern Tribe', 'The Ice Canal', 'Under the Ice Bridges', 'Boats on the Canal', 'The Water Streets'], ['', '', 'at Dusk', 'by Moonlight', 'after the Snowfall']],
+    // Tui and La
     oasis: [['The Spirit Oasis', 'Tui and La', 'Moon and Ocean', 'Push and Pull', 'Two Koi'], ['', '', 'at Midnight', 'in Balance', 'Circling']],
-    southpole: [['The Southern Water Tribe', 'The Watchtower', 'Village at the South Pole', 'Home on the Ice', 'The Snow Wall'], ['', 'in Winter', 'after the Snowfall', 'at the Edge of the World', 'on a Still Day']],
+    oasisgarden: [['The Hidden Garden', 'Garden of the Spirit Oasis', 'Green Heart of the North', 'Spring inside the Ice', 'The Warm Garden'], ['', '', 'at Midnight', 'by Moonlight', 'in Winter']],
+    oceanspirit: [['The Ocean Spirit Rises', 'La Awakens', 'Koizilla', 'The Wrath of the Ocean', 'The Great Koi'], ['', '', 'over the Fleet', 'at the Siege', 'in the Night Sea']],
+    // The southern village
+    southpole: [['The Southern Water Tribe', 'Village at the South Pole', 'Home on the Ice', 'The Snow Wall', 'The Southern Village'], ['', 'in Winter', 'after the Snowfall', 'at the Edge of the World', 'on a Still Day']],
+    watchtower: [['Sokka\u2019s Watchtower', 'The Lookout', 'The Snow Tower', 'On Watch at the Wall', 'The Southern Lookout'], ['', '', 'at Dawn', 'in the Wind', 'before the Penguins']],
+    blacksnow: [['Black Snow', 'Ash on the Wind', 'The Black Snow Falls', 'Before the Raid', 'Soot over the South'], ['', '', 'on the Village', 'in Winter', 'at Dusk']],
+    // Korra's South Pole
+    portal: [['The Southern Spirit Portal', 'The Gate between Worlds', 'Light of the Southern Portal', 'Where the Spirits Cross', 'The Portal in the Ice'], ['', '', 'at Solstice', 'by Night', 'under the Lights']],
+    festival: [['The Glacier Spirits Festival', 'Lanterns of the South', 'Festival Night', 'The Southern Capital', 'Fair on the Ice'], ['', '', 'at Night', 'in Midwinter', 'under the Lanterns']],
+    // The southern sea
+    warfleet: [['Hakoda\u2019s Fleet', 'The Water Tribe Warships', 'Sails of the South', 'The Southern Fleet', 'Warriors at Sea'], ['', '', 'Setting Out', 'at Dawn', 'on the Open Sea']],
+    icedodging: [['Ice Dodging', 'Through the Icebergs', 'The Rite of Ice Dodging', 'A Narrow Passage', 'Sailing the Ice Field'], ['', '', 'at Dawn', 'in a Heavy Sea', 'in the Fog']],
+    iceberg: [['The Boy in the Iceberg', 'The Glowing Iceberg', 'Light in the Ice', 'What the Sea Kept', 'A Hundred Years in the Ice'], ['', '', 'at Dusk', 'in the Southern Sea', 'by Night']],
+    // Keepsakes
+    keepsakes: [['Boomerang and Necklace', 'Keepsakes of the South', 'Treasures of the Water Tribe', 'Still Life with Boomerang', 'Things from Home'], ['', '', 'on a Fur Pelt', 'by Lamplight', 'in Blue and White']],
+    scroll: [['The Waterbending Scroll', 'The Scroll of Forms', 'Lessons on a Scroll', 'The Stolen Scroll', 'Waterbending Forms'], ['', '', 'Unrolled', 'by Lamplight', 'in Blue and Black']],
+    vial: [['The Vial of Spirit Water', 'Spirit Water', 'Water from the Oasis', 'The Healer\u2019s Vial', 'A Gift from Pakku'], ['', '', 'on Its Cord', 'by Moonlight', 'in Blue']],
+    // Creatures of the poles
+    polarbeardog: [['Polar Bear Dog', 'Naga', 'Naga on the Ice', 'The Faithful Polar Bear Dog', 'White Giant of the South'], ['', '', 'at Rest', 'in the Snow', 'on Watch']],
+    penguins: [['Penguin Sledding', 'Otter Penguins', 'Down the Slope', 'The Penguin Run', 'Sledding Season'], ['', '', 'at Noon', 'in Fresh Snow', 'on the Big Hill']],
+    seals: [['Seals on the Ice', 'The Floe', 'Basking Seals', 'Seals and Ice', 'The Seal Colony'], ['', '', 'at Noon', 'in the Thaw', 'by the Open Sea']],
+    // On their own
+    redmoon: [['The Night the Moon Turned Red', 'The Red Moon', 'When the Moon Went Red', 'The Moon Spirit Falls', 'A Red Moon'], ['', '', 'over the North', 'above the Ice Wall', 'on the Night of the Siege']],
+    swamp: [['The Great Tree of the Swamp', 'The Foggy Swamp', 'The Banyan-Grove Tree', 'Heart of the Swamp', 'Roots in the Mist'], ['', '', 'in the Fog', 'at Dusk', 'after the Rain']],
+    icefishing: [['Ice Fishing', 'The Fishing Hole', 'Spear and Catch', 'A Day\u2019s Catch', 'Fishing through the Ice'], ['', '', 'at Noon', 'in the Cold', 'off the Village']],
+    hut: [['Inside a Southern Hut', 'By the Cooking Fire', 'Stew on the Fire', 'Home in the South', 'Warm Hides'], ['', '', 'in Winter', 'at Night', 'after the Hunt']],
+    banner: [['The Water Tribe Banner', 'Moon and Wave', 'Colours of the South', 'The Blue Flag', 'Banner over the Ice'], ['', '', 'in the Wind', 'at Dawn', 'in a Gale']],
+    chiefpalace: [['The Chief\u2019s Palace', 'The Palace of Ice', 'Above the Northern City', 'The Palace Steps', 'Seat of the North'], ['', '', 'at Moonrise', 'in Snow', 'by Night']],
+    siegefleet: [['The Fire Navy Arrives', 'Ships at the Northern Wall', 'The Siege of the North', 'Black Ships off the Ice', 'The Fleet at the Wall'], ['', '', 'in the Fog', 'at Dawn', 'under Ash']],
+    dusk: [['Icebergs', 'The Ice Field', 'Floating Mountains', 'The Edge of the Pack Ice', 'The Southern Sea'], ['at Dusk', 'at Sundown', 'in the Long Evening', 'in the Last Light', 'before Nightfall']],
+    // People
     katara: [['Katara', 'The Waterbender', 'Katara of the Southern Tribe', 'Master Katara', 'Daughter of the South'], ['', '', 'with Her Mother\u2019s Necklace', 'at Fourteen', 'in Blue']],
     sokka: [['Sokka', 'The Warrior of the South', 'Sokka of the Southern Tribe', 'Meat and Sarcasm Guy', 'The Plan Guy'], ['', '', 'with Boomerang', 'on Watch', 'at Fifteen']],
-    korra: [['Korra', 'Avatar Korra', 'Korra of the Southern Tribe', 'The Southern Avatar', 'The Avatar of Republic City'], ['', '', 'at Seventeen', 'in Blue', 'at the South Pole']],
-    keepsakes: [['Boomerang and Necklace', 'Keepsakes of the South', 'Treasures of the Water Tribe', 'Still Life with Boomerang', 'Things from Home'], ['', '', 'on a Fur Pelt', 'by Lamplight', 'in Blue and White']],
   },
   portrait: {},
   still: {},
   landscape: {},
 };
+
+/** Subjects that look best on tall or on wide paintings; the rest suit any shape. */
+const AVATAR_FIT: Record<string, 'tall' | 'wide'> = {
+  canals: 'tall',
+  oceanspirit: 'tall',
+  watchtower: 'tall',
+  portal: 'tall',
+  vial: 'tall',
+  banner: 'tall',
+  chiefpalace: 'tall',
+  oasisgarden: 'wide',
+  southpole: 'wide',
+  festival: 'wide',
+  warfleet: 'wide',
+  scroll: 'wide',
+  penguins: 'wide',
+  seals: 'wide',
+  siegefleet: 'wide',
+  dusk: 'wide',
+};
+
+const shapeOf = (p: { w: number; h: number }): 'tall' | 'wide' | 'any' => {
+  const a = (p.w * RULES.cellAspect) / p.h;
+  return a < 0.85 ? 'tall' : a > 1.3 ? 'wide' : 'any';
+};
+
+/**
+ * Gives each painting of one type its own subject from the theme, so none repeats in the game. Tall and wide
+ * paintings choose first, each taking a subject that suits its shape when one is left.
+ */
+function dealSubjects(r: Rand, paintings: Painting[], genre: Genre, theme: ThemeId, used: Set<string>) {
+  const all = scenesOf(genre, theme);
+  const pool: string[] = [];
+  const rank = { tall: 0, wide: 1, any: 2 };
+  const order = shuffle(r, [...paintings]).sort((a, b) => rank[shapeOf(a)] - rank[shapeOf(b)]);
+  for (const p of order) {
+    // More paintings than subjects (a nation still being painted): start the list again.
+    if (!pool.length) pool.push(...shuffle(r, [...all]));
+    const want = shapeOf(p);
+    let i = pool.findIndex((s) => (AVATAR_FIT[s] ?? 'any') === want);
+    if (i < 0) i = pool.findIndex((s) => !AVATAR_FIT[s]);
+    if (i < 0) i = 0;
+    p.scene = pool.splice(i, 1)[0];
+    p.title = makeTitle(r, genre, p.scene, used, theme);
+  }
+}
 
 const sceneTable = (theme: ThemeId): SceneTable => (theme === 'avatar' ? AVATAR_SCENES : SCENES);
 
@@ -237,9 +316,10 @@ function makePainting(r: Rand, id: string, genre: Genre, frame: FrameId, w: numb
 
 /**
  * The paintings for one game. Types and frames are spread evenly: 28 of each type, 28 of each frame,
- * and every type/frame pair 7 times. The supply comes back shuffled.
+ * and every type/frame pair 7 times. The supply comes back shuffled. In a theme, each type's paintings get
+ * the theme's subjects with none repeated (types the theme has no subjects for keep the classic scenes).
  */
-export function buildPaintings(r: Rand): { supply: Painting[]; starters: Painting[] } {
+export function buildPaintings(r: Rand, theme: ThemeId = 'classic'): { supply: Painting[]; starters: Painting[] } {
   const used = new Set<string>();
   const supply: Painting[] = [];
   let i = 0;
@@ -252,6 +332,16 @@ export function buildPaintings(r: Rand): { supply: Painting[]; starters: Paintin
   }
   const frames = shuffle(r, [...FRAMES]);
   const starters = GENRES.map((g, k) => makePainting(r, `s${k + 1}`, g, frames[k], 2, 3, used, true));
+  if (theme !== 'classic')
+    for (const g of GENRES)
+      if (scenesOf(g, theme).length)
+        dealSubjects(
+          r,
+          [...supply, ...starters].filter((p) => p.genre === g),
+          g,
+          theme,
+          used,
+        );
   return { supply: shuffle(r, supply), starters: shuffle(r, starters) };
 }
 

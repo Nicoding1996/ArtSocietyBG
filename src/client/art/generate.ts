@@ -1,4 +1,4 @@
-import { RULES } from '../../shared/content';
+import { RULES, scenesOf } from '../../shared/content';
 import type { Painting } from '../../shared/types';
 import { makePainter, type Painter } from './common';
 import { cubistScene } from './cubism';
@@ -41,15 +41,10 @@ const SCENES: Record<string, (p: Painter) => void> = {
   flowers: (p) => stillScene(p, 'flowers'),
   bottles: (p) => stillScene(p, 'bottles'),
   guitar: (p) => cubistScene(p, 'guitar'),
-  // Avatar theme: the Water Tribes.
-  icecity: (p) => waterScene(p, 'icecity'),
-  oasis: (p) => waterScene(p, 'oasis'),
-  southpole: (p) => waterScene(p, 'southpole'),
-  katara: (p) => waterScene(p, 'katara'),
-  sokka: (p) => waterScene(p, 'sokka'),
-  korra: (p) => waterScene(p, 'korra'),
-  keepsakes: (p) => waterScene(p, 'keepsakes'),
 };
+
+// Avatar theme: the Water Tribes (the blue type). Unpainted subjects show a placeholder.
+for (const scene of scenesOf('city', 'avatar')) SCENES[scene] = (p) => waterScene(p, scene);
 
 function sceneFor(art: ArtKey): (p: Painter) => void {
   if (art.scene === 'cubist') return (p) => cubistScene(p, art.genre === 'portrait' ? 'portrait' : 'still');
