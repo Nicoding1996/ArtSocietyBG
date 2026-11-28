@@ -18,7 +18,7 @@ import { Room, type Surroundings } from './room';
 import { Table } from './table';
 import { TeaHouse } from './teahouse';
 import { flickerFlames, tileMesh } from './tiles';
-import { GalleryWall, type GhostState } from './wall';
+import { GalleryWall, type FaceDown, type GhostState } from './wall';
 
 const VignetteShader = {
   uniforms: { tDiffuse: { value: null }, strength: { value: 0.38 } },
@@ -46,11 +46,17 @@ export type View = { kind: 'table' } | { kind: 'wall'; pid: string; tight: boole
 
 export interface Placement {
   pid: string;
-  tile: Tile;
+  /** Face down when the auctioneer tries a size on their wall. */
+  tile: Tile | FaceDown;
   /** Legal top-left cells. */
   spots: { x: number; y: number }[];
   /** 'preview' only shows where a painting could go; 'place' pins on the first click and commits on the second. */
   mode: 'place' | 'preview';
+  /**
+   * Where the ghost waits while the pointer is off the wall (null: nowhere). Given at all, the ghost never
+   * stays where the pointer left the wall, not even when the placement is redrawn.
+   */
+  rest?: { x: number; y: number } | null;
   onHover?: (spot: { x: number; y: number; valid: boolean } | null) => void;
   onPin?: (spot: { x: number; y: number } | null) => void;
   onCommit?: (spot: { x: number; y: number }) => void;
@@ -219,7 +225,14 @@ export class World {
     canvas.addEventListener('pointerup', (e) => this.onPointerUp(e));
     canvas.addEventListener('pointerleave', () => {
       this.onTileHover?.(null, null, 0, 0);
-      if (this.placement && !this.pinned) this.walls.get(this.placement.pid)?.clearGhost();
+      const pl = this.placement;
+      if (!pl || this.pinned) return;
+      // A ghost with a resting spot goes back there, and a redrawn placement brings it back there too.
+      if (pl.rest !== undefined && this.lastSpot) {
+        this.lastSpot = null;
+        pl.onHover?.(null);
+      }
+      this.restGhost();
     });
     window.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
@@ -619,7 +632,7 @@ export class World {
     if (pl && pick) {
       this.canvas.style.cursor = 'grab';
       if (!this.pinned) {
-        this.walls.get(pl.pid)?.clearGhost();
+        this.restGhost();
         if (this.lastSpot) pl.onHover?.(null);
         this.lastSpot = null;
       }
@@ -630,7 +643,7 @@ export class World {
       const wall = this.walls.get(pl.pid)!;
       if (!cell) {
         if (!this.pinned) {
-          wall.clearGhost();
+          this.restGhost();
           if (this.lastSpot) pl.onHover?.(null);
           this.lastSpot = null;
         }
@@ -720,7 +733,20 @@ export class World {
     else if (hover) {
       wall?.setGhost(pl.tile, hover.x, hover.y, !hover.valid ? 'bad' : pl.mode === 'preview' ? 'preview' : 'ok');
       pl.onHover?.(hover);
-    }
+    } else this.restGhost();
+  }
+
+  /**
+   * With the pointer off the wall and nothing pinned, the ghost waits at its resting spot (red if the tile
+   * could not hang there), or goes.
+   */
+  private restGhost() {
+    const pl = this.placement;
+    if (!pl || this.pinned) return;
+    const wall = this.walls.get(pl.pid);
+    const r = pl.rest;
+    if (r) wall?.setGhost(pl.tile, r.x, r.y, pl.spots.some((s) => s.x === r.x && s.y === r.y) ? 'preview' : 'bad');
+    else wall?.clearGhost();
   }
 
   stopPlacement() {
@@ -762,7 +788,7 @@ export class World {
     const pl = this.placement;
     this.pinned = null;
     if (pl) {
-      this.walls.get(pl.pid)?.clearGhost();
+      this.restGhost();
       pl.onPin?.(null);
       pl.onHover?.(null);
     }

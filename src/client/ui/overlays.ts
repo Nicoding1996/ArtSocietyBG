@@ -290,6 +290,7 @@ export function showHelp(onClose?: () => void) {
         </ul>
         <h3>Controls</h3>
         <p class="small">Point at your wall to preview a spot, click to pin it, click again (or press <b>Hang here</b>) to confirm. Esc unpins. The panel shows your score now and with the tile there. Click a tile you hung this round to move it. Drag to look around, scroll to zoom, click any painting to look closer.</p>
+        <p class="small">With the gavel you choose sizes beside your wall. Each size shows whether it fits there and, with dots, who else has room for it. Point at a size to see it on your wall, with every place it could hang lit up. The last size you chose stays lit up, and follows the pointer over your wall.</p>
         <p class="small">While bidding, and when you pick, click a painting on offer to try it on your wall. Before a museum swap, click a museum painting to try it there, then press <b>Swap and hang here</b>.</p>
         <p class="small">Rest the pointer on a player's card to see their wall, click it to go there. Keys: <b>1</b>\u2013<b>4</b> a player's wall, <b>T</b> the table, <b>M</b> your wall, <b>G</b> every wall side by side. Click a type in the museum panel (or a museum pile on the table) to see the paintings the museum holds.</p>
         <p class="small">With nothing pinned, Esc opens the menu. When nobody else is at the table it pauses the game, and so does switching to another tab.</p>

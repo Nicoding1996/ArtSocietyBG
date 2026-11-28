@@ -5,7 +5,7 @@ import { ease, type Tweens } from './fx';
 import { CELL_H, CELL_W, GRID_H, GRID_MID, GRID_TOP, GRID_W, PANEL_H, PANEL_W, ROOM, inwardRotation, outward, type Side } from './layout';
 import { brass, gold, mahogany, walnut } from './materials';
 import { WALL_STYLES, labelTexture, plaqueTexture, toTexture, wallpaperTexture } from './textures';
-import { ghostify, ring, tileMesh } from './tiles';
+import { backMesh, ghostify, ring, tileMesh } from './tiles';
 
 export const ASSIST_SCALE = 0.55;
 export const STAGE_SCALE = 0.58;
@@ -17,6 +17,21 @@ const EXCESS_X = -(PANEL_W / 2 + 0.95);
 export type GhostState = 'ok' | 'bad' | 'pinned' | 'preview';
 
 const GHOST_COLORS: Record<GhostState, string> = { ok: '#8dffb8', bad: '#ff6b6b', pinned: '#ffd76a', preview: '#9fd3ff' };
+
+/** A painting still face down in the supply: only its size is known (the auctioneer tries sizes on their wall). */
+export interface FaceDown {
+  kind: 'back';
+  id: string;
+  w: number;
+  h: number;
+}
+
+interface Ghost {
+  key: string;
+  obj: THREE.Group;
+  outline: THREE.Group;
+  fill: THREE.Mesh;
+}
 
 interface Placed {
   tile: Tile;
@@ -88,7 +103,9 @@ export class GalleryWall {
   private staging: Placed[] = [];
   private assistant: Placed | null = null;
   private excess: Placed[] = [];
-  private ghost: { key: string; obj: THREE.Group; outline: THREE.Group; fill: THREE.Mesh } | null = null;
+  private ghost: Ghost | null = null;
+  /** Ghosts of face-down sizes, kept because the auctioneer points from size to size and back. */
+  private backGhosts = new Map<string, Ghost>();
   private ghostMats = new Map<GhostState, THREE.MeshBasicMaterial>();
   private marks: THREE.Group[] = [];
   /** Dashed outlines on the tiles hung this round that can still move. */
@@ -471,19 +488,25 @@ export class GalleryWall {
 
   // ---------- placing ----------
 
-  /** Shows a translucent tile at (x, y) with an outline coloured by state. */
-  setGhost(tile: Tile, x: number, y: number, state: GhostState) {
+  /** Shows a translucent tile (face down: its back) at (x, y) with an outline coloured by state. */
+  setGhost(tile: Tile | FaceDown, x: number, y: number, state: GhostState) {
     const key = tile.id;
     if (!this.ghost || this.ghost.key !== key) {
       this.clearGhost();
-      const obj = tileMesh(tile, { backing: this.backing, urgent: true });
-      ghostify(obj, 0.82);
-      const fill = new THREE.Mesh(new THREE.PlaneGeometry(tile.w * CELL_W, tile.h * CELL_H), this.ghostMat(state, 0.18));
-      const outline = outlineRect(tile.w * CELL_W, tile.h * CELL_H, 0.035, this.ghostMat(state, 0.95));
-      obj.userData.overlay = fill.userData.overlay = outline.userData.overlay = true;
-      obj.renderOrder = 3;
-      this.group.add(obj, fill, outline);
-      this.ghost = { key, obj, outline, fill };
+      let ghost = tile.kind === 'back' ? this.backGhosts.get(key) : undefined;
+      if (!ghost) {
+        const obj = tile.kind === 'back' ? backMesh(tile.w, tile.h) : tileMesh(tile, { backing: this.backing, urgent: true });
+        // A back is plain, so more of the wall shows through it.
+        ghostify(obj, tile.kind === 'back' ? 0.7 : 0.82);
+        const fill = new THREE.Mesh(new THREE.PlaneGeometry(tile.w * CELL_W, tile.h * CELL_H), this.ghostMat(state, 0.18));
+        const outline = outlineRect(tile.w * CELL_W, tile.h * CELL_H, 0.035, this.ghostMat(state, 0.95));
+        obj.userData.overlay = fill.userData.overlay = outline.userData.overlay = true;
+        obj.renderOrder = 3;
+        ghost = { key, obj, outline, fill };
+        if (tile.kind === 'back') this.backGhosts.set(key, ghost);
+      }
+      this.group.add(ghost.obj, ghost.fill, ghost.outline);
+      this.ghost = ghost;
     }
     const g = this.ghost;
     const at = cellLocal(x, y, tile.w, tile.h, 0);

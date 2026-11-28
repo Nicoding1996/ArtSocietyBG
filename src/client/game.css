@@ -1094,6 +1094,101 @@ svg.sh {
   color: var(--muted);
 }
 
+/* Whether the size fits on your wall (top left, across from its number), and a dot for each other
+   collector: filled when they have room for it too. */
+.size-btn .fit {
+  position: absolute;
+  top: 5px;
+  left: 6px;
+}
+
+.size-btn .fit svg,
+.pr-hint .fit svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.6;
+}
+
+.size-btn.nofit {
+  border-color: rgba(255, 154, 138, 0.22);
+  background: rgba(255, 90, 90, 0.045);
+}
+
+.size-btn .fitdots {
+  gap: 4px;
+  margin-top: 0;
+}
+
+.size-btn .fitdot {
+  width: 9px;
+  height: 9px;
+}
+
+.size-btn.nofit .shape {
+  opacity: 0.5;
+  border-style: dashed;
+}
+
+/* Choosing the auction beside your wall: the column widens so that every size shows at once. */
+.hud.wide-dock {
+  --side-w: 440px;
+}
+
+.side .size-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.side .size-btn {
+  min-height: 0;
+  padding: 6px 4px 5px;
+  gap: 2px;
+}
+
+.side .size-btn .shape {
+  zoom: 0.8;
+}
+
+/* On a window up to 800px tall the column keeps every size in view: the museum panel shows only its
+   rows, the rules line goes (the legend stays), and the shapes shrink a little. */
+@media (max-height: 800px) {
+  .hud.wide-dock .museum .panel-title,
+  .hud.wide-dock .museum .mu-foot,
+  .hud.wide-dock .sz-rules {
+    display: none;
+  }
+  .hud.wide-dock .museum .mu-row {
+    padding: 2px 0;
+  }
+  .side .size-btn {
+    padding-top: 5px;
+    padding-bottom: 4px;
+  }
+  .side .size-btn .shape {
+    zoom: 0.65;
+  }
+}
+
+/* Which size your wall is showing. */
+.size-peek {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #cfe6ff;
+}
+
+.size-peek svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+}
+
+.size-peek.bad {
+  color: #ffbbb2;
+}
+
 .size-chips {
   display: flex;
   gap: 6px;
@@ -1434,6 +1529,9 @@ svg.sh {
   :root {
     --side-w: 250px;
     --players-w: 214px;
+  }
+  .hud.wide-dock {
+    --side-w: 400px;
   }
   .size-grid {
     grid-template-columns: repeat(5, minmax(70px, 1fr));

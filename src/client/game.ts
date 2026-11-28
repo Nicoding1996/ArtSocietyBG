@@ -92,6 +92,7 @@ export class GameScreen {
           tile: req.tile,
           spots: req.spots,
           mode: req.mode,
+          rest: req.rest,
           onHover: req.onHover,
           onPin: req.onPin,
           onCommit: req.onCommit,
@@ -119,7 +120,7 @@ export class GameScreen {
         const me = this.me();
         if (!me) return;
         // The panel docks beside the wall (see needsMyWall), so the bid cards stay in reach.
-        this.hud.setDocked(this.needsMyWall());
+        this.dock();
         this.lastNeed = on ? `wall:${me}` : 'table';
         if (on && !(this.world.view.kind === 'wall' && this.world.view.pid === me)) this.go({ kind: 'wall', pid: me, tight: true });
         else if (!on) this.go({ kind: 'table' });
@@ -528,7 +529,8 @@ export class GameScreen {
         break;
       }
       case 'lots': {
-        this.goTable(900);
+        // Even the auctioneer, who chose them beside their wall, watches the paintings turned over.
+        this.goTable(900, true);
         this.audio.gavel(1);
         void banner(`${name(e.pid)} puts up ${e.lots.length} paintings`, '', 1500 / speed, 'small');
         await w.table.dealLots(
@@ -719,7 +721,10 @@ export class GameScreen {
     }
   }
 
-  /** True when the local player is about to place something on their wall, or tries a painting on it while bidding. */
+  /**
+   * True when the local player is about to place something on their wall, tries a painting on it while
+   * bidding, or holds the gavel and sizes up the paintings to choose against it.
+   */
   private needsMyWall(): boolean {
     const v = this.view;
     const me = this.me();
@@ -727,14 +732,23 @@ export class GameScreen {
     const p = v.players.find((x) => x.id === me);
     if (!p) return false;
     if (v.phase.kind === 'setup') return !!p.starter;
+    if (v.phase.kind === 'select') return v.players[v.auctioneer]?.id === me;
     if (v.phase.kind === 'acquire') return !!p.task || v.phase.order[v.phase.next] === me;
     if (v.phase.kind === 'bid') return this.prompts.tryingOn;
     return false;
   }
 
-  /** Turns to the table unless the person is steering the camera themselves (then the next update retries). */
-  private goTable(ms: number) {
-    if (!this.autoCam || this.world.userBusy() || this.needsMyWall()) return;
+  /** The panel moves beside my wall when I need it, in a wider column while I choose the auction's sizes. */
+  private dock() {
+    this.hud.setDocked(this.needsMyWall(), this.view?.phase.kind === 'select');
+  }
+
+  /**
+   * Turns to the table unless the person is steering the camera themselves (then the next update retries).
+   * `always`: even if the last state on screen had the player at their wall.
+   */
+  private goTable(ms: number, always = false) {
+    if (!this.autoCam || this.world.userBusy() || (!always && this.needsMyWall())) return;
     this.lastNeed = 'table';
     this.go({ kind: 'table' }, ms);
   }
@@ -834,7 +848,7 @@ export class GameScreen {
     this.chat.setColors(Object.fromEntries(v.players.map((p) => [p.id, p.color])));
     this.chat.setLog(v.log);
     this.hud.render(v, me, this.viewName(), { host: this.isHost(), canPause: this.canPause() });
-    this.hud.setDocked(this.needsMyWall());
+    this.dock();
     this.syncFold(this.world.view, false);
     this.prompts.render(v, me);
     this.measureInsets();

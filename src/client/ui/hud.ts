@@ -74,9 +74,11 @@ export class Hud {
 
   /**
    * While you hang tiles the prompt moves into the right-hand column (in place of the chat), so your
-   * wall can fill the whole height of the screen.
+   * wall can fill the whole height of the screen. `wide` widens the column too, so that every size the
+   * auctioneer can choose shows at once.
    */
-  setDocked(on: boolean) {
+  setDocked(on: boolean, wide = false) {
+    this.root.classList.toggle('wide-dock', on && wide);
     if (on === this.docked) return;
     this.docked = on;
     this.root.classList.toggle('docked', on);

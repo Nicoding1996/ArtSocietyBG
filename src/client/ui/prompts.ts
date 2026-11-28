@@ -1,8 +1,9 @@
-import { DECOR_INFO, PAINTING_SIZES, RULES, decorList, sizeKey } from '../../shared/content';
+import { DECOR_INFO, PAINTING_SIZES, RULES, decorList, parseSize, sizeKey } from '../../shared/content';
 import { taskOptions } from '../../shared/options';
 import { ranking, scoreWall } from '../../shared/scoring';
 import { DECOR_SHAPES, GENRES, type Action, type DecorShape, type GameView, type Genre, type Hung, type Painting, type PlayerView, type Tile } from '../../shared/types';
 import { cornersCovered, coversStar, fits, gridOf, legalSpots, matchingFrames, moveSpots, overlapsEyeline, sameGenre, starterSpots } from '../../shared/wall';
+import type { FaceDown } from '../three/wall';
 import { aTypeName, decorDef, theme, typeInfo, typeName } from '../theme';
 import { el, esc, ordinal, renderIf } from './dom';
 import { icon } from './icons';
@@ -14,9 +15,12 @@ export interface Spot {
 }
 
 export interface PlaceRequest {
-  tile: Tile;
+  /** Face down when the auctioneer tries a size on their wall. */
+  tile: Tile | FaceDown;
   spots: Spot[];
   mode: 'place' | 'preview';
+  /** Where the ghost waits while the pointer is off the wall, null for nowhere (see Placement.rest). */
+  rest?: Spot | null;
   onHover: (spot: (Spot & { valid: boolean }) | null) => void;
   onPin: (spot: Spot | null) => void;
   onCommit: (spot: Spot) => void;
@@ -79,6 +83,24 @@ function noRoom(v: GameView, p: PlayerView, lot: Painting): { helper: 'free' | '
   };
 }
 
+/** The spot where a w x h tile sits nearest the middle of the wall (cells are 1.5 times wider than tall). */
+function middleSpot(spots: Spot[], w: number, h: number): Spot | null {
+  let best: Spot | null = null;
+  let bestD = Infinity;
+  for (const s of spots) {
+    const dx = (s.x + w / 2 - RULES.wallW / 2) * RULES.cellAspect;
+    const dy = s.y + h / 2 - RULES.wallH / 2;
+    if (dx * dx + dy * dy < bestD) {
+      bestD = dx * dx + dy * dy;
+      best = s;
+    }
+  }
+  return best;
+}
+
+/** "Ann", "Ann and Bea", "Ann, Bea and Cy". */
+const nameList = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : (names[0] ?? ''));
+
 export class Prompts {
   readonly root = el('div', 'prompt');
   private local: Local = fresh('');
@@ -93,9 +115,15 @@ export class Prompts {
   private swapHang: { id: string; x: number; y: number } | null = null;
   /** A painting on offer was just chosen: if it has no room, the panel scrolls to where it could go instead. */
   private revealSwaps = false;
+  /** The size under the pointer while I hold the gavel (a size button or a chosen one), shown on my wall. */
+  private sizePeek: string | null = null;
   folded = false;
 
-  constructor(private host: PromptHost) {}
+  constructor(private host: PromptHost) {
+    // Listened for on the panel itself, which stays put while its buttons are drawn again.
+    this.root.addEventListener('pointerover', (e) => this.peekSize((e.target as Element).closest<HTMLElement>('[data-size]')?.dataset.size ?? null));
+    this.root.addEventListener('pointerleave', () => this.peekSize(null));
+  }
 
   /** True while bidding with a painting on offer being tried on my wall. */
   get tryingOn(): boolean {
@@ -138,6 +166,7 @@ export class Prompts {
   hide() {
     this.clearSwapMarks();
     this.swapHang = null;
+    this.sizePeek = null;
     this.root.innerHTML = '';
     this.root.dataset.sig = '';
     this.root.className = 'prompt';
@@ -185,7 +214,10 @@ export class Prompts {
     // Where every tile hangs, so a move (which leaves the task as it was) still starts the panel afresh.
     const taskSig = p ? JSON.stringify([p.task, p.assistant?.id, p.starter?.id, p.wall.map((h) => h.x * 100 + h.y)]) : '';
     const key = `${ph.kind}:${v.round}:${taskSig}:${ph.kind === 'acquire' ? ph.next : ''}`;
-    if (key !== this.local.key) this.local = fresh(key);
+    if (key !== this.local.key) {
+      this.local = fresh(key);
+      this.sizePeek = null;
+    }
     if (!p || ph.kind === 'over') return this.hide();
     if (this.swapHang) this.finishSwap(p);
     const L = this.local;
@@ -208,7 +240,7 @@ export class Prompts {
           placing = this.renderSetup(v, p);
           break;
         case 'select':
-          this.renderSelect(v, p);
+          placing = this.renderSelect(v, p);
           break;
         case 'bid':
           placing = this.renderBid(v, p);
@@ -522,40 +554,64 @@ export class Prompts {
     return true;
   }
 
-  private renderSelect(v: GameView, p: PlayerView) {
+  /**
+   * The auction. The auctioneer chooses by size, beside their wall: each size says whether it fits there
+   * and who else has room for it, and the wall shows the size under the pointer (see previewSize).
+   */
+  private renderSelect(v: GameView, p: PlayerView): boolean {
     const auct = v.players[v.auctioneer];
     const want = v.players.length + 1;
     if (auct.id !== p.id) {
       this.box('slim center', `${icon('gavel')} The auction`, `${dot(auct.color)} ${esc(auct.name)} is choosing ${want} paintings`, 'They choose by size only. Type and frame stay hidden until the reveal.');
-      return;
+      return false;
     }
     const L = this.local;
     const box = this.box(
-      'wide',
+      'wide sizes',
       `${icon('gavel')} You hold the gavel`,
       `Choose ${want} paintings to put up for auction`,
-      'Only the size shows on the back: type and frame are a surprise. The number is the prestige the museum gains if that painting is left over.',
+      `<span class="sz-rules">Only the size shows on the back: type and frame are a surprise. The number is the prestige the museum gains if that painting is left over.</span> <span class="fit ok">${icon('check')}</span> fits your wall, <span class="fit no">${icon('close')}</span> does not, and the dots show who else has room.`,
     );
-    const grid = el('div', 'size-grid');
+    const mine = gridOf(p.wall);
+    const rivals = v.players.filter((x) => x.id !== p.id).map((x) => ({ x, grid: gridOf(x.wall) }));
+    const list = el('div', 'size-grid');
     const used = (k: string) => L.sizes.filter((x) => x === k).length;
     for (const s of PAINTING_SIZES) {
       const k = sizeKey(s.w, s.h);
       const left = (v.supply[k] ?? 0) - used(k);
-      const b = el('button', `size-btn v${s.w + s.h}`, `${sizeShape(s.w, s.h)}<span class="sz">${sizeText(s.w, s.h)}</span><span class="sv">${s.w + s.h}</span><span class="sl">${left} left</span>`);
+      const ok = fits(mine, s.w, s.h);
+      const room = rivals.map(({ x, grid }) => ({ x, ok: fits(grid, s.w, s.h) }));
+      const dots = room.map((r) => `<span class="fitdot ${r.ok ? 'ok' : 'no'}" style="--pc:${r.x.color}" title="${esc(r.x.name)}: ${r.ok ? 'has room' : 'no room'}"></span>`).join('');
+      const b = el(
+        'button',
+        `size-btn v${s.w + s.h} ${ok ? '' : 'nofit'}`,
+        `<span class="fit ${ok ? 'ok' : 'no'}">${icon(ok ? 'check' : 'close')}</span>${sizeShape(s.w, s.h)}<span class="sz">${sizeText(s.w, s.h)}</span><span class="sv">${s.w + s.h}</span><span class="sl">${left} left</span><span class="fitdots">${dots}</span>`,
+      );
+      b.dataset.size = k;
       b.disabled = left <= 0 || L.sizes.length >= want || L.pending;
-      b.title = `${sizeText(s.w, s.h)} painting, museum value ${s.w + s.h}`;
+      const has = room.filter((r) => r.ok).map((r) => r.x.name);
+      const lacks = room.filter((r) => !r.ok).map((r) => r.x.name);
+      b.title = [
+        `${sizeText(s.w, s.h)} painting, museum value ${s.w + s.h}.`,
+        ok ? 'It fits on your wall.' : 'No room on your wall.',
+        has.length ? `${nameList(has)} ${has.length === 1 ? 'has' : 'have'} room for it.` : '',
+        lacks.length ? `${nameList(lacks)} ${lacks.length === 1 ? 'has' : 'have'} no room.` : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
       b.addEventListener('click', () => {
         L.sizes.push(k);
         this.rerender();
       });
-      grid.appendChild(b);
+      list.appendChild(b);
     }
-    box.appendChild(grid);
+    box.appendChild(list);
     const chips = el('div', 'size-chips');
     chips.innerHTML = L.sizes.length ? '' : '<span class="muted">Nothing chosen yet</span>';
     L.sizes.forEach((k, i) => {
       const [w, h] = k.split('x').map(Number);
       const c = el('button', 'chip removable', `${sizeShape(w, h, 6)} ${sizeText(w, h)} ${icon('close')}`);
+      c.dataset.size = k;
       c.title = 'Remove';
       c.addEventListener('click', () => {
         L.sizes.splice(i, 1);
@@ -563,6 +619,7 @@ export class Prompts {
       });
       chips.appendChild(c);
     });
+    this.infoLine(this.foot(box));
     const acts = el('div', 'pr-actions');
     acts.appendChild(chips);
     acts.appendChild(
@@ -575,6 +632,52 @@ export class Prompts {
     );
     acts.appendChild(this.button(`Reveal ${want} paintings`, 'primary', () => this.send({ type: 'auction', sizes: [...L.sizes] }), L.sizes.length !== want));
     this.foot(box).appendChild(acts);
+    return this.previewSize(p);
+  }
+
+  /** The pointer moved onto a size or off the sizes: while I choose the auction, my wall follows it. */
+  private peekSize(k: string | null) {
+    if (k === this.sizePeek) return;
+    this.sizePeek = k;
+    const v = this.view;
+    const p = v?.players.find((x) => x.id === this.me);
+    if (v?.phase.kind === 'select' && p && v.players[v.auctioneer].id === p.id) this.previewSize(p);
+  }
+
+  /**
+   * Shows a size on my wall while I hold the gavel: the one under the pointer, or else the last one chosen.
+   * Every place it could hang lights up. While the pointer is on the size, its back hangs at the place
+   * nearest the middle of the wall (in the middle, in red, when there is no room); on the wall it follows
+   * the pointer. False when no size is shown.
+   */
+  private previewSize(p: PlayerView): boolean {
+    const L = this.local;
+    const k = L.pending ? null : (this.sizePeek ?? L.sizes.at(-1) ?? null);
+    const size = k ? parseSize(k) : null;
+    const info = this.info;
+    if (!size) {
+      this.host.stopPlace();
+      if (info) info.innerHTML = L.pending ? '' : `<span class="size-peek">${icon('eye')}<span>Point at a size to see it on your wall.</span></span>`;
+      return false;
+    }
+    const spots = legalSpots(gridOf(p.wall), size.w, size.h);
+    const n = spots.length;
+    const name = `<b>${sizeText(size.w, size.h)}</b>`;
+    if (info)
+      info.innerHTML = n
+        ? `<span class="size-peek">${icon('eye')}<span>Lit up on your wall: ${n === 1 ? 'the one place' : `the ${n} places`} a ${name} could hang.</span></span>`
+        : `<span class="size-peek bad">${icon('close')}<span>No room for a ${name} on your wall.</span></span>`;
+    const middle = { x: Math.floor((RULES.wallW - size.w) / 2), y: Math.floor((RULES.wallH - size.h) / 2) };
+    this.host.place({
+      tile: { kind: 'back', id: `size:${k}`, w: size.w, h: size.h },
+      spots,
+      mode: 'preview',
+      rest: this.sizePeek ? (middleSpot(spots, size.w, size.h) ?? middle) : null,
+      onHover: () => undefined,
+      onPin: () => undefined,
+      onCommit: () => undefined,
+    });
+    return true;
   }
 
   /**
