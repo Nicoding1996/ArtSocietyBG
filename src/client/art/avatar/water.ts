@@ -4,7 +4,7 @@ import { glowingIceberg, iceDodging, icebergsAtDusk, warFleet } from './water-se
 import { festival, oasisGarden, oceanSpirit, spiritPortal } from './water-spirits';
 import { penguinSledding, polarBearDog, turtleSeals } from './water-creatures';
 import { banner, blackSnow, hutInterior, iceFishing, scroll, swamp, vial, watchtowerView } from './water-south';
-import { type Ctx, type Trace, TAU, BLACK, NAVY, BLUE, ICE, SNOW, SKY, type Press, fill, line, within, paper, pull, seal } from './print';
+import { type Ctx, type Trace, TAU, BLACK, NAVY, BLUE, ICE, SNOW, SKY, type Press, fill, line, within, paper, pull, seal, unpainted } from './print';
 import { CITY_FAR, CITY_NEAR, WALL, moon, arch, pendant, boomerang, pelt, necklace, pouch, SNOW_SHADE, aurora, ridge, watchtower, igloo, hut, snowWall, penguin, GRASS, GRASS_LIGHT, tuft, reed, koi, tower, crest, canoe } from './water-motifs';
 
 /**
@@ -52,18 +52,6 @@ export function waterScene(painter: Painter, scene: string) {
   seal(p);
   pull(p);
 }
-
-/** A placeholder for a subject on the list that isn't painted yet. */
-const unpainted = (scene: string) => (p: Press) => {
-  line(p, BLUE, 3, (k) => {
-    k.setLineDash([12, 10]);
-    k.rect(p.w * 0.1, p.h * 0.1, p.w * 0.8, p.h * 0.8);
-  });
-  p.c.fillStyle = BLUE;
-  p.c.font = `${Math.round(Math.min(p.w, p.h) * 0.09)}px serif`;
-  p.c.textAlign = 'center';
-  p.c.fillText(scene, p.w / 2, p.h / 2);
-};
 
 function iceCity(p: Press) {
   const { c, w, h } = p;

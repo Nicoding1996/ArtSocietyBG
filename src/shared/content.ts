@@ -225,7 +225,47 @@ const AVATAR_SCENES: SceneTable = {
   },
   portrait: {},
   still: {},
-  landscape: {},
+  landscape: {
+    // Ba Sing Se
+    outerwall: [['The Outer Wall', 'The Walls of Ba Sing Se', 'The Impenetrable City', 'The Great Wall of the Earth Kingdom', 'Wall across the Plain'], ['', '', 'in Mist', 'at Dawn', 'after Rain']],
+    upperring: [['The Upper Ring', 'The Earth King\u2019s Palace', 'Palace of the Earth King', 'Roofs of the Upper Ring', 'The Royal Palace of Ba Sing Se'], ['', '', 'in Mist', 'at Dawn', 'in Spring']],
+    monorail: [['The Ring Train', 'Rails over Ba Sing Se', 'Between the Rings', 'The Stone Train', 'Train to the Upper Ring'], ['', '', 'in Mist', 'at Dusk', 'over the Rooftops']],
+    // Omashu
+    omashu: [['Omashu', 'The Mountain City', 'Omashu on Its Peak', 'The City of King Bumi', 'Towers of Omashu'], ['', '', 'in Mist', 'at Dawn', 'from the Bridge']],
+    mailchutes: [['The Mail Chutes', 'Riding the Chutes', 'Delivery Service', 'The Chutes of Omashu', 'Down the Mountain'], ['', '', 'at Full Speed', 'at Noon', 'in Spring']],
+    lovers: [['The Cave of Two Lovers', 'Love Is Brightest in the Dark', 'The Secret Tunnel', 'Crystals in the Dark', 'The Lovers\u2019 Tomb'], ['', '', 'Glowing', 'by Crystal Light', 'Underground']],
+    // Kyoshi Island
+    kyoshiisland: [['Kyoshi Island', 'The Village of Kyoshi', 'Under Avatar Kyoshi', 'Kyoshi\u2019s Statue', 'The Island Village'], ['', '', 'in Mist', 'at Dawn', 'in Summer']],
+    unagi: [['The Unagi', 'The Great Eel', 'Unagi in the Bay', 'The Beast of Kyoshi Bay', 'The Serpent Rises'], ['', '', 'in a Storm', 'at Dawn', 'off the Point']],
+    kyoshifans: [['Fans of the Kyoshi Warriors', 'Kyoshi Warrior Fans', 'The Warrior\u2019s Fans', 'Fans and Headdress', 'Armour of the Kyoshi Warriors'], ['', '', 'in Green and Gold', 'on Silk', 'Laid Out']],
+    // The Si Wong Desert
+    sandsailer: [['The Sandsailer', 'Sailing the Dunes', 'Across the Si Wong', 'Wind over the Sand', 'The Desert Crossing'], ['', '', 'at Noon', 'in a Sandstorm', 'at Dusk']],
+    library: [['Wan Shi Tong\u2019s Library', 'The Library under the Sand', 'He Who Knows Ten Thousand Things', 'The Spirit Library', 'The Sinking Library'], ['', '', 'in the Desert', 'at Noon', 'at Dusk']],
+    mistypalms: [['Misty Palms Oasis', 'The Oasis', 'Palms in the Desert', 'Water in the Si Wong', 'The Last Oasis'], ['', '', 'at Noon', 'at Dusk', 'in the Heat']],
+    // The Jasmine Dragon
+    jasmine: [['The Jasmine Dragon', 'Iroh\u2019s Tea Shop', 'The Finest Tea in the City', 'Tea in the Upper Ring', 'The Tea Shop'], ['', '', 'in Spring', 'at Dawn', 'on a Quiet Street']],
+    teaset: [['A Pot of Jasmine Tea', 'Tea for Two', 'Leaves from the Vine', 'Tea Things', 'The Tea Tray'], ['', '', 'with Cups', 'by the Window', 'in Green and Gold']],
+    // Korra's Earth
+    zaofu: [['Zaofu', 'The Metal City', 'Domes of Zaofu', 'The City of the Beifongs', 'Petals of Metal'], ['', '', 'at Dawn', 'Opening', 'in Mist']],
+    republiccity: [['Republic City', 'The City by the Bay', 'Lights of Republic City', 'The Skyline', 'Aang Memorial Island'], ['', '', 'at Night', 'in Fog', 'at Dusk']],
+    colossus: [['The Colossus', 'The Giant of Metal', 'Kuvira\u2019s Machine', 'The Great Mecha', 'Iron Giant over the City'], ['', '', 'Advancing', 'in Smoke', 'at Dusk']],
+    // Creatures
+    badgermoles: [['Badgermoles', 'The First Earthbenders', 'In the Badgermoles\u2019 Cave', 'Badgermole Burrow', 'Listening to the Earth'], ['', '', 'Underground', 'in the Dark', 'at Rest']],
+    bosco: [['Bosco', 'The Earth King\u2019s Bear', 'Bosco in the Palace Garden', 'The Royal Bear', 'A Bear in Green'], ['', '', 'at Rest', 'in Spring', 'at Court']],
+    ostrichhorses: [['Ostrich Horses', 'Riders on the Plain', 'The Ostrich Horse Herd', 'Ostrich Horses Grazing', 'The Long Road'], ['', '', 'at Dawn', 'in the Grass', 'on the Road']],
+    // On their own
+    cabbages: [['My Cabbages!', 'The Cabbage Cart', 'The Cabbage Merchant', 'Cabbages for Sale', 'Market Day'], ['', '', 'at Noon', 'on the Road', 'Once Again']],
+    drill: [['The Drill', 'The Siege of Ba Sing Se', 'The Machine at the Wall', 'The Fire Nation Drill', 'Iron against Stone'], ['', '', 'at the Outer Wall', 'in Dust', 'at Dawn']],
+    laogai: [['Lake Laogai', 'The Quiet Lake', 'What Lies under Lake Laogai', 'The Lake Outside the City', 'Still Water'], ['', '', 'at Dawn', 'in Mist', 'in Autumn']],
+    greatdivide: [['The Great Divide', 'The Canyon', 'The Deepest Canyon', 'Across the Great Divide', 'Walls of the Canyon'], ['', '', 'at Noon', 'at Dusk', 'in Mist']],
+    serpentpass: [['The Serpent\u2019s Pass', 'The Narrow Path', 'Between Two Lakes', 'The Pass to Ba Sing Se', 'The Serpent\u2019s Road'], ['', '', 'in Mist', 'at Dawn', 'in a Storm']],
+    earthrumble: [['Earth Rumble', 'The Blind Bandit', 'The Rumble Arena', 'The Earthbending Ring', 'Fight Night'], ['', '', 'at Night', 'in the Ring', 'Six']],
+    makapu: [['Makapu Village', 'The Volcano above Makapu', 'Aunt Wu\u2019s Village', 'The Village under the Mountain', 'Clouds over Makapu'], ['', '', 'in Spring', 'at Dawn', 'in Mist']],
+    beifong: [['The Beifong Estate', 'The House in Gaoling', 'Garden of the Beifongs', 'Home of the Blind Bandit', 'Walls of the Beifong Estate'], ['', '', 'in Spring', 'at Dusk', 'in the Rain']],
+    // People
+    toph: [['Toph Beifong', 'The Blind Bandit', 'The Greatest Earthbender', 'Toph', 'The Melon Lord'], ['', '', 'Listening', 'in Green', 'at Twelve']],
+    bumi: [['King Bumi', 'The Mad Genius', 'The King of Omashu', 'Bumi', 'The Old King'], ['', '', 'Laughing', 'in Green and Gold', 'on His Throne']],
+  },
 };
 
 /** Subjects that look best on tall or on wide paintings; the rest suit any shape. */
@@ -246,6 +286,23 @@ const AVATAR_FIT: Record<string, 'tall' | 'wide'> = {
   seals: 'wide',
   siegefleet: 'wide',
   dusk: 'wide',
+  // Earth
+  omashu: 'tall',
+  mailchutes: 'tall',
+  monorail: 'tall',
+  library: 'tall',
+  colossus: 'tall',
+  greatdivide: 'tall',
+  makapu: 'tall',
+  outerwall: 'wide',
+  upperring: 'wide',
+  sandsailer: 'wide',
+  zaofu: 'wide',
+  republiccity: 'wide',
+  ostrichhorses: 'wide',
+  drill: 'wide',
+  serpentpass: 'wide',
+  laogai: 'wide',
 };
 
 const shapeOf = (p: { w: number; h: number }): 'tall' | 'wide' | 'any' => {

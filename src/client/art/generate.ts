@@ -1,5 +1,5 @@
 import { RULES, scenesOf } from '../../shared/content';
-import type { Painting } from '../../shared/types';
+import type { Genre, Painting } from '../../shared/types';
 import { makePainter, type Painter } from './common';
 import { cubistScene } from './cubism';
 import { cityScene } from './city';
@@ -9,6 +9,7 @@ import { postScene } from './postimpressionism';
 import { stillScene } from './still';
 import { ukiyoeScene } from './ukiyoe';
 import { waterScene } from './avatar/water';
+import { earthScene } from './avatar/earth';
 
 /** Gap between a tile's edge and its frame, and the frame's width, in wall units (cell height = 1). */
 export const TILE_MARGIN = 0.05;
@@ -43,8 +44,17 @@ const SCENES: Record<string, (p: Painter) => void> = {
   guitar: (p) => cubistScene(p, 'guitar'),
 };
 
-// Avatar theme: the Water Tribes (the blue type). Unpainted subjects show a placeholder.
-for (const scene of scenesOf('city', 'avatar')) SCENES[scene] = (p) => waterScene(p, scene);
+// Avatar theme: each nation's painter. Unpainted subjects show a placeholder. Subject ids are shared
+// with the classic scenes in one table, so they must not repeat.
+const AVATAR_PAINTERS: [Genre, (p: Painter, scene: string) => void][] = [
+  ['city', waterScene],
+  ['landscape', earthScene],
+];
+for (const [genre, paint] of AVATAR_PAINTERS)
+  for (const scene of scenesOf(genre, 'avatar')) {
+    if (SCENES[scene]) console.error(`Avatar subject "${scene}" has the same id as another scene`);
+    SCENES[scene] = (p) => paint(p, scene);
+  }
 
 function sceneFor(art: ArtKey): (p: Painter) => void {
   if (art.scene === 'cubist') return (p) => cubistScene(p, art.genre === 'portrait' ? 'portrait' : 'still');

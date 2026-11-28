@@ -38,6 +38,18 @@ export interface Press extends Painter {
   my: number;
 }
 
+/** A placeholder for a subject on a nation's list that isn't painted yet. */
+export const unpainted = (scene: string) => (p: Press) => {
+  line(p, BLUE, 3, (k) => {
+    k.setLineDash([12, 10]);
+    k.rect(p.w * 0.1, p.h * 0.1, p.w * 0.8, p.h * 0.8);
+  });
+  p.c.fillStyle = BLUE;
+  p.c.font = `${Math.round(Math.min(p.w, p.h) * 0.09)}px serif`;
+  p.c.textAlign = 'center';
+  p.c.fillText(scene, p.w / 2, p.h / 2);
+};
+
 /** One flat ink over the path `trace` draws. Colour blocks print slightly out of register; the black key doesn't. */
 export function fill(p: Press, ink: Ink, trace: Trace, key = false) {
   const c = p.c;
@@ -153,4 +165,22 @@ export function seal(p: Press) {
     },
     true,
   );
+}
+
+/** The Fire Nation's mark: a tall tongue of flame between two smaller ones that lean out, centred on (x, y), s from middle to tip. */
+export function fireMark(p: Press, x: number, y: number, s: number, ink: Ink = RED) {
+  fill(p, ink, (k) => {
+    k.moveTo(x, y - s);
+    k.quadraticCurveTo(x + s * 0.46, y - s * 0.1, x + s * 0.26, y + s * 0.5);
+    k.quadraticCurveTo(x, y + s * 0.9, x - s * 0.26, y + s * 0.5);
+    k.quadraticCurveTo(x - s * 0.46, y - s * 0.1, x, y - s);
+    k.closePath();
+    for (const m of [-1, 1]) {
+      k.moveTo(x + m * s * 0.82, y - s * 0.5);
+      k.quadraticCurveTo(x + m * s * 0.8, y + s * 0.1, x + m * s * 0.42, y + s * 0.55);
+      k.quadraticCurveTo(x + m * s * 0.3, y + s * 0.2, x + m * s * 0.46, y - s * 0.05);
+      k.quadraticCurveTo(x + m * s * 0.62, y - s * 0.2, x + m * s * 0.82, y - s * 0.5);
+      k.closePath();
+    }
+  });
 }
