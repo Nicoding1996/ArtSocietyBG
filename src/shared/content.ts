@@ -265,7 +265,48 @@ const AVATAR_SCENES: SceneTable = {
     zuko: [['Prince Zuko', 'Zuko', 'The Banished Prince', 'Fire Lord Zuko', 'The Prince of the Fire Nation'], ['', '', 'with His Scar', 'in Red', 'at Sixteen']],
     iroh: [['General Iroh', 'Uncle Iroh', 'The Dragon of the West', 'Iroh', 'The Tea Master'], ['', '', 'with His Teapot', 'Smiling', 'in Red and Gold']],
   },
-  still: {},
+  still: {
+    // The Southern Air Temple
+    southtemple: [['The Southern Air Temple', 'Temple above the Clouds', 'The Temple on the Peaks', 'Home of the Air Nomads', 'Towers of the South'], ['', '', 'at Sunrise', 'in Summer', 'before the War']],
+    sanctuary: [['The Avatar Sanctuary', 'Hall of the Avatars', 'The Statues of the Past', 'The Line of Avatars', 'Past Lives'], ['', '', 'by Candlelight', 'in Silence', 'in the Old Temple']],
+    airball: [['The Airball Court', 'Airball', 'A Game of Airball', 'The Poles of the Court', 'Playtime for Novices'], ['', '', 'at Noon', 'after Lessons', 'in the Wind']],
+    // The Northern Air Temple
+    northtemple: [['The Northern Air Temple', 'The Temple on the Cliff', 'The Mechanist\u2019s Temple', 'Spires of the North', 'The High Temple'], ['', '', 'in Mist', 'at Dawn', 'Rebuilt']],
+    gliders: [['The Mechanist\u2019s Gliders', 'Wings over the North', 'The First War Balloon', 'Inventions of the Mechanist', 'Flying Machines'], ['', '', 'in Flight', 'round the Cliffs', 'at Dusk']],
+    // The Eastern Air Temple
+    easttemple: [['The Eastern Air Temple', 'Temple of the Nuns', 'Spires of the East', 'The Temple of Guru Pathik', 'The Eastern Peaks'], ['', '', 'at Dawn', 'in Bloom', 'among the Clouds']],
+    chakras: [['The Seven Chakras', 'Chakras of the Body', 'Guru Pathik\u2019s Lesson', 'The Path to the Avatar State', 'Seven Wheels of Light'], ['', '', 'Unlocked', 'in Meditation', 'at the Eastern Temple']],
+    // Air Temple Island
+    templeisland: [['Air Temple Island', 'The Island in the Bay', 'Tenzin\u2019s Island', 'The New Air Temple', 'The Island Temple'], ['', '', 'at Dusk', 'from the Harbour', 'in Spring']],
+    gates: [['The Spinning Gates', 'The Training Gates', 'Gates of the Wind', 'The Gates on the Island', 'The Airbenders\u2019 Gates'], ['', '', 'at Dawn', 'in Motion', 'after Practice']],
+    // Sky bison
+    appa: [['Appa', 'The Sky Bison', 'Appa in Flight', 'Yip Yip', 'The Great Bison'], ['', '', 'above the Clouds', 'at Sunset', 'on the Wind']],
+    herd: [['The Wild Herd', 'Sky Bison Migrating', 'The Herd in the Sky', 'Bison on the Wing', 'A Herd of Sky Bison'], ['', '', 'at Dawn', 'over the Mountains', 'Heading South']],
+    bisonlake: [['Appa by the Lake', 'The Bison at Rest', 'A Bath for Appa', 'Still Water', 'The Bison\u2019s Nap'], ['', '', 'at Noon', 'in Summer', 'in the Mountains']],
+    // Lemurs
+    momo: [['Momo', 'The Winged Lemur', 'A Lemur\u2019s Lunch', 'The Lemur of the Temple', 'Momo Eating'], ['', '', 'with a Peach', 'Contented', 'on the Wall']],
+    lemurs: [['Winged Lemurs', 'Lemurs on the Roofs', 'The Lemur Colony', 'A Flock of Lemurs', 'The Temple Lemurs'], ['', '', 'at Sunset', 'Gliding', 'at Play']],
+    // Treasures
+    glider: [['Aang\u2019s Glider', 'The Glider Staff', 'Wings of the Air Nomads', 'The Avatar\u2019s Staff', 'A Nomad\u2019s Glider'], ['', '', 'Unfolded', 'in Red and Yellow', 'Resting']],
+    paisho: [['Pai Sho', 'The Pai Sho Board', 'An Unusual Gambit', 'A Game in Progress', 'The Old Game'], ['', '', 'with the White Lotus', 'at the Temple', 'after Tea']],
+    pies: [['Fruit Pies', 'Monk Gyatso\u2019s Pies', 'Pies for the Elders', 'Gyatso\u2019s Baking', 'Pies Cooling'], ['', '', 'on the Sill', 'Fresh from the Oven', 'before the Prank']],
+    // Mandalas
+    cycle: [['The Avatar Cycle', 'The Four Elements', 'Wheel of the Avatar', 'The Cycle of Rebirth', 'Air, Water, Earth, Fire'], ['', '', 'in Gold', 'as a Mandala', 'Turning']],
+    emblem: [['The Air Nomad Emblem', 'The Sign of Air', 'The Three Winds', 'The Nomads\u2019 Mark', 'Mandala of the Wind'], ['', '', 'in Gold', 'in Saffron', 'Spinning']],
+    // On their own
+    westtemple: [['The Western Air Temple', 'The Upside-Down Temple', 'The Temple under the Cliff', 'Towers Hanging Down', 'The Hidden Temple'], ['', '', 'in the Canyon', 'by the Waterfall', 'Deserted']],
+    cloudsea: [['The Sea of Clouds', 'Above the Clouds', 'Peaks in the Clouds', 'The World Below', 'Islands in the Sky'], ['', '', 'at Sunrise', 'in Gold', 'at First Light']],
+    marbles: [['The Marble Trick', 'Marbles in the Air', 'Spinning Marbles', 'A Trick for the Novices', 'Round and Round'], ['', '', 'in a Whirl', 'on the Terrace', 'at Play']],
+    scooters: [['The Air Scooter Race', 'Racing Round the Temple', 'Air Scooters', 'Round the Walls', 'A Race on the Wind'], ['', '', 'at Speed', 'at Dusk', 'in a Blur']],
+    kites: [['Kites', 'Kites over the Temple', 'The Kite Festival', 'Kites on the Wind', 'Paper Birds'], ['', '', 'in Spring', 'at Noon', 'High Up']],
+    banners: [['Prayer Banners', 'Banners over the Pass', 'Flags of the Nomads', 'The Mountain Pass', 'Strings of Banners'], ['', '', 'in the Wind', 'at Dawn', 'in Five Colours']],
+    chimes: [['Wind Chimes', 'Chimes under the Eaves', 'The Singing Wind', 'Bells of the Temple', 'The Chimes Ring'], ['', '', 'in the Breeze', 'at Dusk', 'in Summer']],
+    gong: [['The Temple Gong', 'The Great Gong', 'The Old Gong', 'Call to Meditation', 'The Bronze Gong'], ['', '', 'at Dawn', 'Ringing', 'in the Courtyard']],
+    ledge: [['The Meditation Ledge', 'A Place to Meditate', 'The Quiet Ledge', 'The Edge of the World', 'The Monks\u2019 Lookout'], ['', '', 'at Sunrise', 'in Silence', 'above the Valley']],
+    // People
+    aang: [['Aang', 'Avatar Aang', 'The Last Airbender', 'The Avatar', 'The Young Monk'], ['', '', 'in Meditation', 'in Saffron', 'at Twelve']],
+    gyatso: [['Monk Gyatso', 'Gyatso', 'Aang\u2019s Teacher', 'The Elder of the Temple', 'The Old Monk'], ['', '', 'Smiling', 'in Saffron', 'in Meditation']],
+  },
   landscape: {
     // Ba Sing Se
     outerwall: [['The Outer Wall', 'The Walls of Ba Sing Se', 'The Impenetrable City', 'The Great Wall of the Earth Kingdom', 'Wall across the Plain'], ['', '', 'in Mist', 'at Dawn', 'after Rain']],
@@ -362,6 +403,24 @@ const AVATAR_FIT: Record<string, 'tall' | 'wide'> = {
   zukoship: 'wide',
   agnikai: 'wide',
   volcanic: 'wide',
+  // Air
+  southtemple: 'tall',
+  northtemple: 'tall',
+  chakras: 'tall',
+  glider: 'tall',
+  westtemple: 'tall',
+  chimes: 'tall',
+  kites: 'tall',
+  sanctuary: 'wide',
+  gliders: 'wide',
+  templeisland: 'wide',
+  gates: 'wide',
+  appa: 'wide',
+  herd: 'wide',
+  lemurs: 'wide',
+  pies: 'wide',
+  cloudsea: 'wide',
+  banners: 'wide',
 };
 
 const shapeOf = (p: { w: number; h: number }): 'tall' | 'wide' | 'any' => {
